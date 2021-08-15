@@ -3,7 +3,6 @@
 
 #include "SpiderPawn.h"
 
-#include "AITypes.h"
 #include "Components/SphereComponent.h"
 #include "GameCode/Components/Movement/SpiderPawnMovementComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -16,10 +15,6 @@ ASpiderPawn::ASpiderPawn()
 	MovementComponent = CreateDefaultSubobject<UPawnMovementComponent, USpiderPawnMovementComponent>(
 		TEXT("MovementComponent"));
 	MovementComponent->SetUpdatedComponent(CollisionComponent);
-	//
-	// const auto GCMovementComponent = Cast<UGCBasePawnMovementComponent>(MovementComponent);
-	// if (GCMovementComponent)
-	// 	GCMovementComponent->PawnHalfHeight = CollisionComponent->GetScaledSphereRadius();
 	
 	IKScale = GetActorScale().Z;
 	IKTraceDistance = CollisionSphereRadius * IKScale;
@@ -53,15 +48,6 @@ float ASpiderPawn::GetIkOffsetForSocket(const FName& SocketName)
 	ETraceTypeQuery TraceType = UEngineTypes::ConvertToTraceType(ECC_Visibility);
 	FHitResult HitResult;
 	
-	// bool bHit = UKismetSystemLibrary::LineTraceSingle(GetWorld(), TraceStart, TraceEnd, TraceType, true,
-	// 	TArray<AActor*>(), EDrawDebugTrace::ForOneFrame, HitResult, true);
-	// if (!bHit)
-	// {
-	// 	bHit = UKismetSystemLibrary::LineTraceSingle(GetWorld(), TraceEnd,
-	// 		TraceEnd - IKTraceExtendDistance * FVector::UpVector, TraceType, true,
-	// 		TArray<AActor*>(), EDrawDebugTrace::ForOneFrame, HitResult, true);
-	// }
-
 	bool bHit = UKismetSystemLibrary::LineTraceSingle(GetWorld(), TraceStart, FootPosition - IKTraceExtendDistance * FVector::UpVector,
 		TraceType, true,TArray<AActor*>(), EDrawDebugTrace::ForOneFrame, HitResult, true);
 

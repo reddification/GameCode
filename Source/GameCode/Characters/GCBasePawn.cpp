@@ -20,10 +20,6 @@ AGCBasePawn::AGCBasePawn()
 	CollisionComponent->SetCollisionProfileName(UCollisionProfile::Pawn_ProfileName);
 	RootComponent = CollisionComponent;
 
-	// MovementComponent = CreateDefaultSubobject<UPawnMovementComponent, UGCBasePawnMovementComponent>(
-	// 	TEXT("MovementComponent"));
-	// MovementComponent->SetUpdatedComponent(CollisionComponent);
-
 	SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArmComponent->bUsePawnControlRotation = 1;
 	SpringArmComponent->SetupAttachment(RootComponent);
@@ -37,10 +33,6 @@ AGCBasePawn::AGCBasePawn()
 	ArrowComponent = CreateDefaultSubobject<UArrowComponent>(TEXT("Arrow"));
 	ArrowComponent->SetupAttachment(RootComponent);
 #endif
-	
-	// const auto GCMovementComponent = Cast<UGCBasePawnMovementComponent>(MovementComponent);
-	// if (GCMovementComponent)
-	// 	GCMovementComponent->PawnHalfHeight = CollisionComponent->GetScaledSphereRadius();
 }
 
 // Called to bind functionality to input

@@ -3,8 +3,6 @@
 
 #include "GCBasePawnMovementComponent.h"
 
-#include "GameCode/Utils/Utils.h"
-
 void UGCBasePawnMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	FActorComponentTickFunction* ThisTickFunction)
 {
