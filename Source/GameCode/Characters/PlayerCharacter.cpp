@@ -25,15 +25,14 @@ APlayerCharacter::APlayerCharacter(const FObjectInitializer& ObjectInitializer)
 	CameraComponent->bUsePawnControlRotation = false;
 
 	GetCharacterMovement()->bOrientRotationToMovement = 1;
-	GetCharacterMovement()->JumpZVelocity = 600.f;
+	GetCharacterMovement()->JumpZVelocity = 600;
 
 	SprintSpringArmTimelineCurve = CreateDefaultSubobject<UCurveFloat>(TEXT("Sprint SpringArm Curve"));
-	// TODO single curve for sprint and wallrun offset
 	const auto& timelineStart = SprintSpringArmTimelineCurve->FloatCurve.AddKey(0,0);
 	const auto& timelineEnd = SprintSpringArmTimelineCurve->FloatCurve.AddKey(SprintSpringArmOffsetDuration, 1);
 	SprintSpringArmTimelineCurve->FloatCurve.SetKeyInterpMode(timelineStart, ERichCurveInterpMode::RCIM_Cubic);
 	SprintSpringArmTimelineCurve->FloatCurve.SetKeyInterpMode(timelineEnd, ERichCurveInterpMode::RCIM_Cubic);
-	SprintSpringArmTimelineCurve->FloatCurve.BakeCurve(60.f);
+	SprintSpringArmTimelineCurve->FloatCurve.BakeCurve(60);
 
 	DefaultSpringArmOffset = SpringArmComponent->TargetArmLength;
 }
@@ -52,8 +51,6 @@ void APlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	InitSprintSpringArm();
-	GCMovementComponent->WallrunBeginEvent.BindUObject(this, &APlayerCharacter::OnWallrunBegin);
-	GCMovementComponent->WallrunEndEvent.BindUObject(this, &APlayerCharacter::OnWallrunEnd);
 }
 
 void APlayerCharacter::Tick(float DeltaSeconds)
@@ -188,16 +185,10 @@ void APlayerCharacter::ClimbDown(float Value)
 	}
 } 
 
-void APlayerCharacter::AdjustSpringArm(const FVector& Adjustment)
+void APlayerCharacter::AdjustSpringArm(float Adjustment)
 {
-	SpringArmComponent->TargetOffset += Adjustment;
+	SpringArmComponent->TargetOffset.Z += Adjustment;
 }
-
-void APlayerCharacter::AdjustSpringArmRelative(const FVector& Adjustment)
-{
-	SpringArmComponent->AddRelativeLocation(Adjustment);
-}
-
 
 void APlayerCharacter::OnJumped_Implementation()
 {
@@ -224,39 +215,11 @@ void APlayerCharacter::OnSprintEnd_Implementation()
 void APlayerCharacter::OnStartCrouchOrProne(float HalfHeightAdjust)
 {
 	Super::OnStartCrouchOrProne(HalfHeightAdjust);
-	AdjustSpringArm(FVector(0, 0, HalfHeightAdjust));
+	AdjustSpringArm(HalfHeightAdjust);
 }
 
 void APlayerCharacter::OnEndCrouchOrProne(float HalfHeightAdjust)
 {
 	Super::OnEndCrouchOrProne(HalfHeightAdjust);
-	AdjustSpringArm(FVector(0, 0, -HalfHeightAdjust));
-}
-
-void APlayerCharacter::OnWallrunBegin(ESide Side)
-{
-	OnWallrunChanged(Side, 1);
-}
-
-void APlayerCharacter::OnWallrunEnd(ESide Side)
-{
-	OnWallrunChanged(Side, -1);
-}
-
-void APlayerCharacter::OnWallrunChanged(ESide Side, int AdjustmentModification)
-{
-	const float CameraPositionAdjustment = 50.f;
-	switch (Side)
-	{
-	case ESide::Left:
-		break;
-	case ESide::Right:
-		AdjustmentModification *= -1;
-		break;
-	default:
-		break;
-	}
-
-	// TODO timeline curve
-	AdjustSpringArmRelative(FVector(0, AdjustmentModification * CameraPositionAdjustment, 0));
+	AdjustSpringArm(-HalfHeightAdjust);
 }

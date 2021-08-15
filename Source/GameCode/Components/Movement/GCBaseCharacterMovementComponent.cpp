@@ -3,50 +3,19 @@
 
 #include "GCBaseCharacterMovementComponent.h"
 
+#include "DrawDebugHelpers.h"
 #include "Components/CapsuleComponent.h"
 #include "Curves/CurveVector.h"
-#include "GameCode/GameCode.h"
-#include "GameCode/GCDebugSubsystem.h"
 #include "GameCode/Actors/Interactive/Environment/Ladder.h"
 #include "GameCode/Characters/GCBaseCharacter.h"
 #include "GameCode/Data/GCMovementMode.h"
 #include "GameFramework/Character.h"
-#include "Kismet/GameplayStatics.h"
-#include "Kismet/KismetSystemLibrary.h"
-#include "DrawDebugHelpers.h"
 
 void UGCBaseCharacterMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	DefaultWalkSpeed = MaxWalkSpeed;
 	GCCharacter = Cast<AGCBaseCharacter>(CharacterOwner);
-	CharacterOwner->GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &UGCBaseCharacterMovementComponent::OnPlayerCapsuleHit);
-}
-
-float UGCBaseCharacterMovementComponent::GetMaxSpeed() const
-{
-	if (bOutOfStamina)
-	{
-		return OutOfStaminaSpeed;
-	}
-	else if (bSprinting)
-	{
-		return SprintSpeed;
-	}
-	else if (IsClimbing())
-	{
-		return MaxClimbingSpeed;
-	}
-	else if (bProning)
-	{
-		return CrawlSpeed;	
-	}
-	else if (IsWallrunning())
-	{
-		return WallrunSettings.MaxSpeed;
-	}
-
-	return Super::GetMaxSpeed();
 }
 
 void UGCBaseCharacterMovementComponent::StartSprint()
@@ -66,6 +35,31 @@ void UGCBaseCharacterMovementComponent::StopSprint()
 	bForceMaxAccel = 0;
 }
 
+float UGCBaseCharacterMovementComponent::GetMaxSpeed() const
+{
+	if (bOutOfStamina)
+	{
+		return OutOfStaminaSpeed;
+	}
+	
+	if (bSprinting)
+	{
+		return SprintSpeed;
+	}
+
+	if (IsClimbing())
+	{
+		return MaxClimbingSpeed;
+	}
+	
+	if (bProning)
+	{
+		return CrawlSpeed;	
+	}
+
+	return Super::GetMaxSpeed();
+}
+
 void UGCBaseCharacterMovementComponent::SetIsOutOfStamina(bool bNewOutOfStamina)
 {
 	bOutOfStamina = bNewOutOfStamina;
@@ -76,85 +70,11 @@ void UGCBaseCharacterMovementComponent::SetIsOutOfStamina(bool bNewOutOfStamina)
 	}
 }
 
-void UGCBaseCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
+void UGCBaseCharacterMovementComponent::TryProne()
 {
-	const bool bIsCrouching = IsCrouching();
-	if (CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
-	{
-		if (bWantsToCrouch && !bIsCrouching)
-		{
-			Crouch();
-		}
-		else if (bWantsToProne && !bProning)
-		{
-			Prone();
-		}
-		else if (!bWantsToCrouch && bIsCrouching)
-		{
-			UnCrouch();
-		}
-		else if (!bWantsToProne && bProning)
-		{
-			UnProne();
-		}
-	}
+	bWantsToProne = true;
+	bWantsToCrouch = false;
 }
-
-void UGCBaseCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode,
-															uint8 PreviousCustomMode)
-{
-	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
-	if (MovementMode == MOVE_Swimming)
-	{
-		CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(SwimmingCapsuleRadius, SwimmingCapsuleHalfHeight);
-		if (IsCrouching())
-		{
-			UnCrouch();
-		}
-		else if (IsProning())
-		{
-			UnProne();
-		}
-	}
-	else if (PreviousMovementMode == MOVE_Swimming)
-	{
-		const UCapsuleComponent* DefaultCharacterCapsule = CharacterOwner->GetClass()
-			->GetDefaultObject<ACharacter>()->GetCapsuleComponent();
-		CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(DefaultCharacterCapsule->GetUnscaledCapsuleRadius(),
-			DefaultCharacterCapsule->GetUnscaledCapsuleHalfHeight(),true);
-		FRotator Rotation = CharacterOwner->GetActorRotation();
-		Rotation.Roll = 0;
-		CharacterOwner->SetActorRotation(Rotation);
-	}
-	else if (PreviousMovementMode == MOVE_Custom)
-	{
-		switch (PreviousCustomMode)
-		{
-		case EGCMovementMode::CMOVE_Climbing:
-			StoppedClimbing.ExecuteIfBound(CurrentClimbable);
-			CurrentClimbable = nullptr;
-			break;
-		default:
-			break;
-		}
-	}
-
-	if (MovementMode == MOVE_Custom)
-	{
-		switch (CustomMovementMode)
-		{
-		case EGCMovementMode::CMOVE_Mantling:
-			GetWorld()->GetTimerManager().SetTimer(MantlingTimerHandle, this,
-				&UGCBaseCharacterMovementComponent::EndMantle, MantlingParameters.Duration);
-			break;
-		case EGCMovementMode::CMOVE_Climbing:
-		default:
-			break;
-		}
-	}
-}
-
-#pragma region CROUCH
 
 void UGCBaseCharacterMovementComponent::TryStandUp()
 {
@@ -201,9 +121,29 @@ void UGCBaseCharacterMovementComponent::UnCrouch(bool bClientSimulation)
 	}
 }
 
-#pragma endregion 
-
-#pragma region PRONE
+void UGCBaseCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
+{
+	const bool bIsCrouching = IsCrouching();
+	if (CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
+	{
+		if (bWantsToCrouch && !bIsCrouching)
+		{
+			Crouch();
+		}
+		else if (bWantsToProne && !bProning)
+		{
+			Prone();
+		}
+		else if (!bWantsToCrouch && bIsCrouching)
+		{
+			UnCrouch();
+		}
+		else if (!bWantsToProne && bProning)
+		{
+			UnProne();
+		}
+	}
+}
 
 void UGCBaseCharacterMovementComponent::Prone()
 {
@@ -363,17 +303,6 @@ bool UGCBaseCharacterMovementComponent::CanProne()
 {
 	return IsMovingOnGround() && !UpdatedComponent->IsSimulatingPhysics(); 
 }
-
-void UGCBaseCharacterMovementComponent::TryProne()
-{
-	bWantsToProne = true;
-	bWantsToCrouch = false;
-}
-
-#pragma endregion 
-
-#pragma region MANTLE
-
 bool UGCBaseCharacterMovementComponent::TryStartMantle(const FMantlingMovementParameters& NewMantlingParameters)
 {
 	if (CustomMovementMode == (uint8)EGCMovementMode::CMOVE_Mantling)
@@ -394,10 +323,6 @@ bool UGCBaseCharacterMovementComponent::IsMantling() const
 	return UpdatedComponent && MovementMode == MOVE_Custom
 		&& CustomMovementMode == (uint8)EGCMovementMode::CMOVE_Mantling;
 }
-
-#pragma endregion 
-
-#pragma region CLIMB
 
 float UGCBaseCharacterMovementComponent::GetActorToClimbableProjection(const ALadder* Ladder,
 	const FVector& ActorLocation) const
@@ -435,6 +360,25 @@ bool UGCBaseCharacterMovementComponent::TryStartClimbing(const ALadder* Ladder)
 	CharacterOwner->SetActorRotation(TargetOrientationRotation);
 	SetMovementMode(MOVE_Custom, (uint8)EGCMovementMode::CMOVE_Climbing);
 	return true;
+}
+
+bool UGCBaseCharacterMovementComponent::TryStartZiplining(const FZiplineParams& NewZiplineParams)
+{
+	if (IsZiplining())
+	{
+		return false;		
+	}
+	
+	this->ZiplineParams = NewZiplineParams;
+	bForceRotation = true;
+	ForceTargetRotation = NewZiplineParams.ZiplineNormalizedDirection.ToOrientationRotator();
+	SetMovementMode(MOVE_Custom, (uint8)EGCMovementMode::CMOVE_Zipline);
+	return true;
+}
+
+void UGCBaseCharacterMovementComponent::StopZiplining()
+{
+	SetMovementMode(MOVE_Falling);
 }
 
 void UGCBaseCharacterMovementComponent::StopClimbing(EStopClimbingMethod StopClimbingMethod)
@@ -498,6 +442,11 @@ bool UGCBaseCharacterMovementComponent::IsClimbing() const
 		&& CustomMovementMode == (uint8)EGCMovementMode::CMOVE_Climbing;
 }
 
+bool UGCBaseCharacterMovementComponent::IsZiplining() const
+{
+	return MovementMode == MOVE_Custom && CustomMovementMode == (uint8)EGCMovementMode::CMOVE_Zipline;
+}
+
 float UGCBaseCharacterMovementComponent::GetClimbingSpeedRatio() const
 {
 	checkf(IsValid(CurrentClimbable), TEXT("UGCBaseCharacterMovementComponent::GetClimbableSpeedRatio cannot be invoked without an active climbable"));
@@ -505,179 +454,80 @@ float UGCBaseCharacterMovementComponent::GetClimbingSpeedRatio() const
 	return  FVector::DotProduct(Velocity, ClimbableUpVector) / MaxClimbingSpeed;
 }
 
-#pragma endregion 
-
-#pragma region WALLRUN
-
-void UGCBaseCharacterMovementComponent::OnPlayerCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
-    UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+void UGCBaseCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode,
+                                                              uint8 PreviousCustomMode)
 {
-	if (!IsSurfaceWallrunnable(Hit.ImpactNormal))
+	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
+	if (MovementMode == MOVE_Swimming)
 	{
-		WallrunData.Progress = 0.f;
-		return;
+		CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(SwimmingCapsuleRadius, SwimmingCapsuleHalfHeight);
+		if (IsCrouching())
+		{
+			UnCrouch();
+		}
+		else if (IsProning())
+		{
+			UnProne();
+		}
 	}
-	
-	if (!WallrunData.bWantsToWallrun || IsWallrunning() || bOutOfStamina)
+	else if (PreviousMovementMode == MOVE_Swimming)
 	{
-		return;
+		const UCapsuleComponent* DefaultCharacterCapsule = CharacterOwner->GetClass()
+			->GetDefaultObject<ACharacter>()->GetCapsuleComponent();
+		CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(DefaultCharacterCapsule->GetUnscaledCapsuleRadius(),
+			DefaultCharacterCapsule->GetUnscaledCapsuleHalfHeight(),true);
+		FRotator Rotation = CharacterOwner->GetActorRotation();
+		Rotation.Roll = 0;
+		CharacterOwner->SetActorRotation(Rotation);
+	}
+	else if (PreviousMovementMode == MOVE_Custom)
+	{
+		switch (PreviousCustomMode)
+		{
+			case EGCMovementMode::CMOVE_Climbing:
+				StoppedClimbing.ExecuteIfBound(CurrentClimbable);
+				CurrentClimbable = nullptr;
+				break;
+			default:
+				break;
+		}
 	}
 
-	if (Velocity.Z < WallrunSettings.MinVelocityZ || Velocity.Size() < WallrunSettings.MinRequiredSpeed)
+	if (MovementMode == MOVE_Custom)
 	{
-		return;
+		switch (CustomMovementMode)
+		{
+			case EGCMovementMode::CMOVE_Mantling:
+				GetWorld()->GetTimerManager().SetTimer(MantlingTimerHandle, this,
+					&UGCBaseCharacterMovementComponent::EndMantle, MantlingParameters.Duration);
+				break;
+			case EGCMovementMode::CMOVE_Climbing:
+			default:
+				break;
+		}
 	}
-
-	const FVector Normal = Hit.ImpactNormal;
-	
-	ESide Side = GetWallrunSideFromNormal(Normal);
-	const FVector AverageNormal = GetWallrunSurfaceNormal(Side);
-	if (AverageNormal == FVector::ZeroVector)
-	{
-		return;
-	}
-
-	WallrunData.Side = Side;
-	const float AngleCos = FVector::DotProduct(CharacterOwner->GetActorUpVector(), AverageNormal);
-	const float Angle = FMath::RadiansToDegrees(FMath::Acos(AngleCos));
-	WallrunData.SurfaceRollAngle = WallrunData.GetSideModificator(Side) * (90.f-Angle);
-	WallrunData.SurfaceNormal = Normal;
-	WallrunData.InitialWorldZ = GetActorLocation().Z;
-	WallrunBeginEvent.ExecuteIfBound(Side);
-	WallrunData.ActiveHeightDynamicCurve = IsMovingOnGround()
-		? WallrunSettings.WallrunHeightDynamicsFromGroundCurve
-		: WallrunSettings.WallrunHeightDynamicsFromAirCurve;
-	
-	SetMovementMode(MOVE_Custom, (uint8)EGCMovementMode::CMOVE_WallRun);
 }
 
-ESide UGCBaseCharacterMovementComponent::GetWallrunSideFromNormal(const FVector& Normal) const
-{
-	const float HorizontalWallrunDotProductThreshold = 0.3f;
-	const float dpSurfaceNormalRightVector = FVector::DotProduct(Normal, CharacterOwner->GetActorRightVector());
-	if (dpSurfaceNormalRightVector > HorizontalWallrunDotProductThreshold)
-	{
-		return ESide::Left;
-	}
-	else if (dpSurfaceNormalRightVector < -HorizontalWallrunDotProductThreshold)
-	{
-		return ESide::Right;
-	}
-
-	return ESide::None;
-}
-
-bool UGCBaseCharacterMovementComponent::IsSurfaceWallrunnable(const FVector& SurfaceNormal) const
-{
-	return SurfaceNormal.Z >= -KINDA_SMALL_NUMBER && SurfaceNormal.Z < GetWalkableFloorZ();
-}
-
-FVector UGCBaseCharacterMovementComponent::GetWallrunSurfaceNormal(const ESide& Side, const FVector& CharacterLocationDelta) const
-{
-	const int SideModificator = WallrunData.GetSideModificator(Side);
-#if ENABLE_DRAW_DEBUG
-	bool bDebugEnabled = GetDebugSubsystem()->IsDebugCategoryEnabled(DebugCategoryWallrun);
-#else
-	bool bDebugEnabled = false;
-#endif
-	
-	const float CharacterScaleZ = CharacterOwner->GetActorScale().Z;
-	FVector FeetPosition = GetActorLocation() + CharacterLocationDelta
-		- FVector::UpVector * WallrunSettings.FeetTraceActorZOffset * CharacterScaleZ;
-	const FVector DirectionVector = CharacterOwner->GetActorRightVector() * SideModificator;
-	ETraceTypeQuery TraceType = UEngineTypes::ConvertToTraceType(ECC_Wallrunnable);
-	FHitResult FeetHit;
-	EDrawDebugTrace::Type TraceDebug = bDebugEnabled ? EDrawDebugTrace::ForDuration : EDrawDebugTrace::None;
-	float CapsuleRadius = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius();
-	bool bFeetTouch = UKismetSystemLibrary::LineTraceSingle(this, FeetPosition,
-		FeetPosition + DirectionVector * (WallrunSettings.WallDistance + CapsuleRadius), TraceType,
-		false,TArray<AActor*>(), TraceDebug, FeetHit, true);
-	if (!bFeetTouch)
-	{
-		return FVector::ZeroVector;
-	}
-
-	FHitResult HandHit;
-	FVector HandPosition = GetActorLocation() + CharacterLocationDelta
-		+ FVector::UpVector * WallrunSettings.HandTraceActorZOffset * CharacterScaleZ;
-
-	// for inclined walls 
-	const float HandTraceExtendFactor = 4.f;
-	bool bHandTouch = UKismetSystemLibrary::LineTraceSingle(this, HandPosition,
-		HandPosition + DirectionVector * (WallrunSettings.WallDistance * HandTraceExtendFactor + CapsuleRadius), TraceType,
-		false,TArray<AActor*>(), TraceDebug, HandHit, true);
-
-	if (!bHandTouch)
-	{
-		return FVector::ZeroVector;
-	}
-
-	return (FeetHit.Normal + HandHit.Normal).GetSafeNormal();
-}
-
-void UGCBaseCharacterMovementComponent::RequestWallrunning()
-{
-	WallrunData.bWantsToWallrun = true;
-}
-
-void UGCBaseCharacterMovementComponent::StopWallrunning(bool bResetTimer)
-{
-	if (!IsWallrunning())
-	{
-		return;
-	}
-	
-	WallrunData.bWantsToWallrun = false;
-	if (bResetTimer)
-	{
-		WallrunData.Progress = 0.f;
-	}
-	
-	WallrunEndEvent.ExecuteIfBound(WallrunData.Side);
-	SetMovementMode(MOVE_Walking);
-}
-
-bool UGCBaseCharacterMovementComponent::IsWallrunning() const
-{
-	return MovementMode == EMovementMode::MOVE_Custom && CustomMovementMode == (uint8) EGCMovementMode::CMOVE_WallRun;
-}
-
-void UGCBaseCharacterMovementComponent::JumpOffWall()
-{
-	// TODO make some UPROPERTYs for these constants
-	FVector JumpOffDirection = WallrunData.SurfaceNormal * 750.f
-		+ CharacterOwner->GetActorUpVector() * 500.f
-		+ CharacterOwner->GetActorForwardVector() * 320.f;
-	StopWallrunning(true);
-	bForceRotation = true;
-	ForceTargetRotation = JumpOffDirection.ToOrientationRotator();
-	ForceTargetRotation.Roll = 0.f;
-	ForceTargetRotation.Pitch = 0.f;
-	Launch(JumpOffDirection);
-}
-
-#pragma endregion 
-
-void UGCBaseCharacterMovementComponent::PhysCustom(float deltaTime, int32 Iterations)
+void UGCBaseCharacterMovementComponent::PhysCustom(float DeltaTime, int32 Iterations)
 {
 	switch (CustomMovementMode)
 	{
 		case EGCMovementMode::CMOVE_Mantling:
-			PhysCustomMantling(deltaTime, Iterations);
+			PhysCustomMantling(DeltaTime, Iterations);
 			break;
 		case EGCMovementMode::CMOVE_Climbing:
-			PhysCustomClimbing(deltaTime, Iterations);
+			PhysCustomClimbing(DeltaTime, Iterations);
 			break;
-		case EGCMovementMode::CMOVE_WallRun:
-			PhysCustomWallRun(deltaTime, Iterations);
+		case EGCMovementMode::CMOVE_Zipline:
+			PhysCustomZiplining(DeltaTime, Iterations);
 		default:
 			break;
 	}
 	
-	Super::PhysCustom(deltaTime, Iterations);
+	Super::PhysCustom(DeltaTime, Iterations);
 }
 
-void UGCBaseCharacterMovementComponent::PhysCustomMantling(float DeltaTime, int32 Iterations)
+void UGCBaseCharacterMovementComponent::PhysCustomMantling(float deltaTime, int32 Iterations)
 {
 	float ElapsedTime = GetWorld()->GetTimerManager().GetTimerElapsed(MantlingTimerHandle) + MantlingParameters.StartTime;
 	FVector CurveValue = MantlingParameters.MantlingCurve->GetVectorValue(ElapsedTime);
@@ -697,10 +547,10 @@ void UGCBaseCharacterMovementComponent::PhysCustomMantling(float DeltaTime, int3
 	SafeMoveUpdatedComponent(NextLocation - GetActorLocation(), NextRotation, false, Hit);
 }
 
-void UGCBaseCharacterMovementComponent::PhysCustomClimbing(float DeltaTime, int32 Iterations)
+void UGCBaseCharacterMovementComponent::PhysCustomClimbing(float deltaTime, int32 Iterations)
 {
-	CalcVelocity(DeltaTime, 1.f, false, ClimbingBrakingDeceleration);
-	FVector Delta = Velocity * DeltaTime;
+	CalcVelocity(deltaTime, 1.f, false, ClimbingBrakingDeceleration);
+	FVector Delta = Velocity * deltaTime;
 	FHitResult Hit;
 
 	if (HasAnimRootMotion())
@@ -708,7 +558,7 @@ void UGCBaseCharacterMovementComponent::PhysCustomClimbing(float DeltaTime, int3
 		SafeMoveUpdatedComponent(Delta, GetOwner()->GetActorRotation(), false, Hit);
 		return;
 	}
-
+	
 	FVector NewPosition = GetActorLocation() + Delta;
 	float NewPositionLadderProjection = GetActorToClimbableProjection(CurrentClimbable, NewPosition);
 	GEngine->AddOnScreenDebugMessage(2, 5, FColor::Blue,
@@ -728,93 +578,33 @@ void UGCBaseCharacterMovementComponent::PhysCustomClimbing(float DeltaTime, int3
 	SafeMoveUpdatedComponent(Delta, GetOwner()->GetActorRotation(), true, Hit);
 }
 
-void UGCBaseCharacterMovementComponent::PhysCustomWallRun(float DeltaTime, int32 iterations)
+void UGCBaseCharacterMovementComponent::PhysCustomZiplining(float DeltaTime, int32 Iterations)
 {
-	const float ForwardInputThreshold = 0.2f;
-	if (CurrentForwardInput < ForwardInputThreshold)
+	const float g = -GetGravityZ();
+	ZiplineParams.CurrentSpeed = ZiplineParams.CurrentSpeed + DeltaTime * g *
+		(ZiplineParams.DeclinationAngleSin - ZiplineParams.Friction * ZiplineParams.DeclinationAngleCos);
+	GEngine->AddOnScreenDebugMessage(3, 3, FColor::Green,
+		FString::Printf(TEXT("Zipline unclamped speed: %f"), ZiplineParams.CurrentSpeed));
+	Velocity = FMath::Clamp(ZiplineParams.CurrentSpeed, MinZiplineSpeed, MaxZiplineSpeed) * ZiplineParams.ZiplineNormalizedDirection;
+	
+	const FVector UncorrectedCharacterLocation = GetActorLocation();
+	if (!UncorrectedCharacterLocation.Equals(ZiplineParams.CorrectedActorLocation, 2.f))
 	{
-		StopWallrunning(false);
-		return;
+		const float CorrectionRatio = 10.f;
+		const FVector CorrectionDelta = (ZiplineParams.CorrectedActorLocation - UncorrectedCharacterLocation) * CorrectionRatio;
+		Velocity += CorrectionDelta;
 	}
 
-	const FVector ActorUpVector = CharacterOwner->GetActorUpVector();
-	float VerticalOffset = 0.f;
-	FVector SurfaceNormal = FVector::ZeroVector;
-	float CurrentSpeed = WallrunSettings.MaxSpeed;
-	const float CurrentWallrunProgress = (WallrunData.Progress + DeltaTime) / WallrunSettings.MaxTime;
-	if (IsValid(WallrunData.ActiveHeightDynamicCurve))
-	{
-		const float CurrentWallrunDeltaHeightFactor = WallrunData.ActiveHeightDynamicCurve->GetFloatValue(CurrentWallrunProgress);
-		const float CurrentZ = GetActorLocation().Z;
-		const float ExpectedDeltaZ = WallrunSettings.MaxDeltaHeight * CurrentWallrunDeltaHeightFactor;
-		VerticalOffset = ExpectedDeltaZ - (CurrentZ - WallrunData.InitialWorldZ);
-		WallrunData.HeightCurveValue = CurrentWallrunDeltaHeightFactor;
-		SurfaceNormal = GetWallrunSurfaceNormal(WallrunData.Side,ActorUpVector * VerticalOffset);
-	}
+	ZiplineParams.CorrectedActorLocation += FMath::Clamp(ZiplineParams.CurrentSpeed, 0.f, MaxZiplineSpeed)
+		* ZiplineParams.ZiplineNormalizedDirection * DeltaTime;
 	
-	if (SurfaceNormal == FVector::ZeroVector)
-	{
-		SurfaceNormal = GetWallrunSurfaceNormal(WallrunData.Side);
-		VerticalOffset = 0.f;	
-	}
 	
-	if (SurfaceNormal == FVector::ZeroVector)
-	{
-		StopWallrunning(false);
-		return;
-	}
-
-	if (IsValid(WallrunSettings.WallrunSpeedDynamicsCurve))
-	{
-		const float WallrunSpeedMultiplier = WallrunSettings.WallrunSpeedDynamicsCurve->GetFloatValue(CurrentWallrunProgress);
-		CurrentSpeed = FMath::Min(CurrentSpeed, CurrentSpeed * WallrunSpeedMultiplier);
-	}
-	
-	WallrunData.SurfaceNormal = SurfaceNormal;
-	FVector NormalVelocity = FVector::ZeroVector;
-	switch (WallrunData.Side)
-	{
-		case ESide::Left:
-			NormalVelocity = FVector::CrossProduct(SurfaceNormal, ActorUpVector).GetSafeNormal();
-			break;
-		case ESide::Right:
-			NormalVelocity = FVector::CrossProduct(ActorUpVector, SurfaceNormal).GetSafeNormal();			
-			break;
-		default:
-			break;
-	}
-	
+	FVector Delta = Velocity * DeltaTime;
 	FHitResult Hit;
-	NormalVelocity = (NormalVelocity * CurrentSpeed * DeltaTime + ActorUpVector * VerticalOffset) * CurrentForwardInput;
-	FRotator Rotation = NormalVelocity.ToOrientationRotator();
-	Rotation.Roll = WallrunData.SurfaceRollAngle;
-	Rotation.Pitch = 0.f;
-	SafeMoveUpdatedComponent(NormalVelocity, Rotation, true, Hit);
-	if (Hit.bBlockingHit)
+	bool bMoved = SafeMoveUpdatedComponent(Delta, GetOwner()->GetActorRotation(), true, Hit);
+	if (!bMoved)
 	{
-		if (!IsSurfaceWallrunnable(Hit.ImpactNormal))
-		{
-			StopWallrunning(true);
-			return;
-		}
-		
-		const float dpSurfaceForwardVector = FVector::DotProduct(Hit.ImpactNormal, CharacterOwner->GetActorForwardVector());
-		const float SurfaceForwardVectorCosThreshold = -0.85f;
-		if (dpSurfaceForwardVector < SurfaceForwardVectorCosThreshold)
-		{
-			StopWallrunning(false);
-		}
-		else
-		{
-			const float HitCorrectionRatio = 2.f;
-			SafeMoveUpdatedComponent(NormalVelocity + Hit.ImpactNormal * HitCorrectionRatio, Rotation, false, Hit);			
-		}
-	}
-	
-	WallrunData.Progress += DeltaTime;
-	if (WallrunData.Progress > WallrunSettings.MaxTime)
-	{
-		StopWallrunning(false);
+		ZiplineObstacleHit.ExecuteIfBound(Hit);
 	}
 }
 
@@ -864,20 +654,10 @@ void UGCBaseCharacterMovementComponent::PhysicsRotation(float DeltaTime)
 		return;
 	}
 	
-	if (IsClimbing() || IsWallrunning())
+	if (IsClimbing())
 	{
 		return;
 	}
 
 	Super::PhysicsRotation(DeltaTime);
-}
-
-UGCDebugSubsystem* UGCBaseCharacterMovementComponent::GetDebugSubsystem() const
-{
-	if (!IsValid(DebugSubsystem))
-	{
-		DebugSubsystem = UGameplayStatics::GetGameInstance(GetWorld())->GetSubsystem<UGCDebugSubsystem>();
-	}
-
-	return DebugSubsystem;
 }

@@ -3,12 +3,15 @@
 
 #include "GCBaseCharacter.h"
 
+#include "DrawDebugHelpers.h"
 #include "Components/CapsuleComponent.h"
 #include "GameCode/Actors/Interactive/InteractiveActor.h"
 #include "GameCode/Actors/Interactive/Environment/Ladder.h"
+#include "GameCode/Actors/Interactive/Environment/Zipline.h"
 #include "GameCode/Components/InverseKinematicsComponent.h"
 #include "GameCode/Components/LedgeDetectionComponent.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
+#include "GameCode/Data/ZiplineParams.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 
@@ -27,6 +30,7 @@ AGCBaseCharacter::AGCBaseCharacter(const FObjectInitializer& ObjectInitializer)
 	GCMovementComponent->StoppedClimbing.BindUObject(this, &AGCBaseCharacter::OnStoppedClimbing);
 	GCMovementComponent->CrouchedOrProned.BindUObject(this, &AGCBaseCharacter::OnStartCrouchOrProne);
 	GCMovementComponent->UncrouchedOrUnproned.BindUObject(this, &AGCBaseCharacter::OnEndCrouchOrProne);
+	GCMovementComponent->ZiplineObstacleHit.BindUObject(this, &AGCBaseCharacter::OnZiplineObstacleHit);
 }
 
 // Called when the game starts or when spawned
@@ -36,6 +40,21 @@ void AGCBaseCharacter::BeginPlay()
 	CurrentStamina = MaxStamina;
 }
 
+// Called every frame
+void AGCBaseCharacter::UpdateStamina(float DeltaTime)
+{
+	const float CurrentStaminaConsumption = GetCurrentStaminaConsumption();
+	if (CurrentStaminaConsumption > 0.f)
+	{
+		ChangeStaminaValue(-CurrentStaminaConsumption * DeltaTime);
+	}
+	else if (CanRestoreStamina())
+	{
+		ChangeStaminaValue(StaminaRestoreVelocity * DeltaTime);
+	}
+}
+
+// Called every frame
 void AGCBaseCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -47,127 +66,6 @@ void AGCBaseCharacter::Tick(float DeltaTime)
 			GetActorLocation(), bIsCrouched, DeltaTime);
 	}
 }
-
-#pragma region STAMINA
-
-void AGCBaseCharacter::UpdateStamina(float DeltaTime)
-{
-	const float CurrentStaminaConsumption = GetCurrentStaminaConsumption(DeltaTime);
-	if (CurrentStaminaConsumption > 0.f)
-	{
-		ChangeStaminaValue(-CurrentStaminaConsumption * DeltaTime);
-	}
-	else if (CanRestoreStamina())
-	{
-		ChangeStaminaValue(StaminaRestoreVelocity * DeltaTime);
-	}
-}
-
-float AGCBaseCharacter::GetCurrentStaminaConsumption(float DeltaTime) const
-{
-	if (GCMovementComponent->IsSprinting())
-	{
-		return SprintStaminaConsumptionRate;
-	}
-	else if (GCMovementComponent->IsWallrunning())
-	{
-		return SprintStaminaConsumptionRate;
-	}
-	
-	return 0.f;
-}
-
-void AGCBaseCharacter::ChangeStaminaValue(float StaminaModification)
-{
-	CurrentStamina = FMath::Clamp(CurrentStamina + StaminaModification, 0.f, MaxStamina);
-
-	if (CurrentStamina == 0.f && !GCMovementComponent->IsOutOfStamina())
-	{
-		// TODO refactor so that all 3 stprint stoppage occur in a single method
-		if (GCMovementComponent->IsSprinting())
-		{
-			StopSprint();
-			OnSprintEnd();
-		}
-		else if (GCMovementComponent->IsWallrunning())
-		{
-			GCMovementComponent->StopWallrunning(false);
-		}
-		GCMovementComponent->SetIsOutOfStamina(true);
-	}
-	else if (CurrentStamina == MaxStamina && GCMovementComponent->IsOutOfStamina())
-	{
-		GCMovementComponent->SetIsOutOfStamina(false);
-	}
-
-#ifdef UE_BUILD_DEBUG
-	const FColor LogColor = FLinearColor::LerpUsingHSV( FLinearColor::Red, FLinearColor::Yellow,
-		CurrentStamina / MaxStamina).ToFColor(false);
-	GEngine->AddOnScreenDebugMessage(1, 1.0f, LogColor, FString::Printf(TEXT("Stamina: %.2f"),
-		CurrentStamina));
-#endif
-}
-
-bool AGCBaseCharacter::CanRestoreStamina() const
-{
-	return !GCMovementComponent->IsFalling() && !IsConsumingStamina();
-}
-
-bool AGCBaseCharacter::IsConsumingStamina() const
-{
-	return GCMovementComponent->IsSprinting() || GCMovementComponent->IsWallrunning() || GCMovementComponent->IsSwimming();
-}
-
-#pragma endregion STAMINA
-
-#pragma region SPRINT
-
-void AGCBaseCharacter::StartSprint()
-{
-	bSprintRequested = true;
-	if (bIsCrouched)
-	{
-		UnCrouch();
-	}
-}
-
-void AGCBaseCharacter::StopSprint()
-{
-	bSprintRequested = false;
-}
-
-bool AGCBaseCharacter::CanSprint() const
-{
-	return IsPendingMovement()
-		&& GCMovementComponent->IsMovingOnGround() && !GCMovementComponent->IsOutOfStamina()
-		&& !GCMovementComponent->IsProning();
-}
-
-void AGCBaseCharacter::TryChangeSprintState()
-{
-	if (bSprintRequested && !GCMovementComponent->IsSprinting() && CanSprint())
-	{
-		GCMovementComponent->StartSprint();
-		OnSprintStart();
-	}
-	else if ((!bSprintRequested || !IsPendingMovement()) && GCMovementComponent->IsSprinting())
-	{
-		GCMovementComponent->StopSprint();
-		OnSprintEnd();
-	}
-}
-
-void AGCBaseCharacter::OnSprintEnd_Implementation()
-{
-}
-
-void AGCBaseCharacter::OnSprintStart_Implementation()
-{
-}
-
-#pragma endregion 
-
-#pragma region JUMP/FALL
 
 void AGCBaseCharacter::Jump()
 {
@@ -183,47 +81,15 @@ void AGCBaseCharacter::Jump()
 	{
 		GCMovementComponent->StopClimbing(EStopClimbingMethod::JumpOff);
 	}
-	else if (GCMovementComponent->IsWallrunning())
+	else if (GCMovementComponent->IsZiplining())
 	{
-		GCMovementComponent->JumpOffWall();
-		ChangeStaminaValue(JumpStaminaConsumption);
+		StopZiplining();
 	}
 	else
 	{
 		Super::Jump();
 	}
 }
-
-void AGCBaseCharacter::OnJumped_Implementation()
-{
-	ChangeStaminaValue(-JumpStaminaConsumption);
-}
-
-bool AGCBaseCharacter::CanJumpInternal_Implementation() const
-{
-	return Super::CanJumpInternal_Implementation()
-		&& !GCMovementComponent->IsOutOfStamina()
-		&& !GCMovementComponent->IsMantling()
-		&& !GCMovementComponent->IsProning();
-}
-
-void AGCBaseCharacter::Falling()
-{
-	if (GCMovementComponent->IsSprinting())
-	{
-		GCMovementComponent->StopSprint();
-		OnSprintEnd();
-	}
-}
-
-void AGCBaseCharacter::Landed(const FHitResult& Hit)
-{
-	Super::Landed(Hit);
-}
-
-#pragma endregion JUMP/FALL
-
-#pragma region INTERACTION
 
 void AGCBaseCharacter::Interact()
 {
@@ -246,33 +112,26 @@ void AGCBaseCharacter::TryStopInteracting()
 			case EInteractionType::Climbing:
 				GCMovementComponent->StopClimbing();
 				break;
+			case EInteractionType::Ziplining:
+				break;
 			default:
 				return;
 		}	
 	}
 
-	CurrentInteractable = nullptr;
-	bInteracting = false;
+	ResetInteraction();
 }
 
+// TODO InteractionComponent
 void AGCBaseCharacter::TryStartInteracting()
 {
-	auto InteractablesCount = InteractiveActors.Num();	
-	if (InteractablesCount <= 0)
-		return;
-
-	const AInteractiveActor* Interactable = nullptr;
-	while (InteractablesCount > 0)
+	const AInteractiveActor* Interactable = GetPreferableInteractable();
+	if (!IsValid(Interactable))
 	{
-		Interactable = InteractiveActors[0];
-		if (IsValid(Interactable))
-			break;
-		
-		InteractiveActors.RemoveSingleSwap(CurrentInteractable);
-		Interactable = nullptr;
-		InteractablesCount--;
+		return;
 	}
-	
+
+	bool bInteractionStarted = false;
 	switch (Interactable->GetInteractionType())
 	{
 		case EInteractionType::Climbing:
@@ -283,32 +142,26 @@ void AGCBaseCharacter::TryStartInteracting()
 				PlayAnimMontage(Ladder->GetAttachFromTopAnimMontage());
 			}
 	
-			GCMovementComponent->TryStartClimbing(Ladder);
+			bInteractionStarted = GCMovementComponent->TryStartClimbing(Ladder);
+			break;
+		}
+		case EInteractionType::Ziplining:
+		{
+			const AZipline* Zipline = StaticCast<const AZipline*>(Interactable);
+			FZiplineParams ZiplineParams = GetZipliningParameters(Zipline);
+			bInteractionStarted = GCMovementComponent->TryStartZiplining(ZiplineParams);
 			break;
 		}
 		default:
-			return;
+			break;
 	}
 
-	bInteracting = true;
-	CurrentInteractable = Interactable;
+	if (bInteractionStarted)
+	{
+		bInteracting = true;
+		CurrentInteractable = Interactable;	
+	}
 }
-
-void AGCBaseCharacter::RegisterInteractiveActor(const AInteractiveActor* InteractiveActor)
-{
-	InteractiveActor->Tags;
-	InteractiveActors.AddUnique(InteractiveActor);
-}
-
-void AGCBaseCharacter::UnregisterInteractiveActor(const AInteractiveActor* InteractiveActor)
-{
-	if (InteractiveActor != CurrentInteractable)
-		InteractiveActors.RemoveSingleSwap(InteractiveActor);
-}
-
-#pragma endregion INTERACTION
-
-#pragma region CROUCH/PRONE
 
 void AGCBaseCharacter::ToggleCrouchState()
 {
@@ -324,6 +177,75 @@ void AGCBaseCharacter::ToggleProneState()
 	{
 		GCMovementComponent->TryProne();
 	}
+}
+
+float AGCBaseCharacter::GetCurrentStaminaConsumption() const
+{
+	if (GCMovementComponent->IsSprinting())
+	{
+		return SprintStaminaConsumptionVelocity;
+	}
+	
+	return 0.f;
+}
+
+void AGCBaseCharacter::ChangeStaminaValue(float StaminaModification)
+{
+	CurrentStamina = FMath::Clamp(CurrentStamina + StaminaModification, 0.f, MaxStamina);
+
+	if (CurrentStamina == 0.f && !GCMovementComponent->IsOutOfStamina())
+	{
+		// TODO refactor so that all 3 stprint stoppage occur in a single method
+		if (GCMovementComponent->IsSprinting())
+		{
+			StopSprint();
+			OnSprintEnd();
+		}
+		GCMovementComponent->SetIsOutOfStamina(true);
+	}
+	else if (CurrentStamina == MaxStamina && GCMovementComponent->IsOutOfStamina())
+	{
+		GCMovementComponent->SetIsOutOfStamina(false);
+	}
+
+#ifdef UE_BUILD_DEBUG
+	const FColor LogColor = FLinearColor::LerpUsingHSV( FLinearColor::Red, FLinearColor::Yellow,
+		CurrentStamina / MaxStamina).ToFColor(false);
+	GEngine->AddOnScreenDebugMessage(1, 1.0f, LogColor, FString::Printf(TEXT("Stamina: %.2f"),
+		CurrentStamina));
+#endif
+}
+
+const FMantlingSettings& AGCBaseCharacter::GetMantlingSettings(float Height) const
+{
+	return Height <= MantleLowMaxHeight ? MantleLowSettings : MantleHighSettings;
+}
+
+void AGCBaseCharacter::StartSprint()
+{
+	bSprintRequested = true;
+	if (bIsCrouched)
+	{
+		UnCrouch();
+	}
+}
+
+void AGCBaseCharacter::StopSprint()
+{
+	bSprintRequested = false;
+}
+
+void AGCBaseCharacter::OnJumped_Implementation()
+{
+	ChangeStaminaValue(-JumpStaminaConsumption);
+}
+
+bool AGCBaseCharacter::CanJumpInternal_Implementation() const
+{
+	return Super::CanJumpInternal_Implementation()
+		&& !GCMovementComponent->IsOutOfStamina()
+		&& !GCMovementComponent->IsMantling()
+		&& !GCMovementComponent->IsProning();
 }
 
 bool AGCBaseCharacter::CanCrouch() const
@@ -347,9 +269,128 @@ void AGCBaseCharacter::OnEndCrouchOrProne(float HalfHeightAdjust)
 	BaseTranslationOffset.Z = MeshRelativeLocation.Z;
 }
 
-#pragma endregion CROUCH/PRONE
+bool AGCBaseCharacter::CanSprint() const
+{
+	return IsPendingMovement()
+		&& GCMovementComponent->IsMovingOnGround() && !GCMovementComponent->IsOutOfStamina()
+		&& !GCMovementComponent->IsProning();
+}
 
-#pragma region MANTLE
+void AGCBaseCharacter::TryChangeSprintState()
+{
+	if (bSprintRequested && !GCMovementComponent->IsSprinting() && CanSprint())
+	{
+		GCMovementComponent->StartSprint();
+		OnSprintStart();
+	}
+	else if ((!bSprintRequested || !IsPendingMovement()) && GCMovementComponent->IsSprinting())
+	{
+		GCMovementComponent->StopSprint();
+		OnSprintEnd();
+	}
+}
+
+bool AGCBaseCharacter::CanRestoreStamina() const
+{
+	return !GCMovementComponent->IsFalling() && !IsConsumingStamina();
+}
+
+bool AGCBaseCharacter::IsConsumingStamina() const
+{
+	return GCMovementComponent->IsSprinting();
+}
+
+void AGCBaseCharacter::Falling()
+{
+	if (GCMovementComponent->IsSprinting())
+	{
+		GCMovementComponent->StopSprint();
+		OnSprintEnd();
+	}
+}
+
+void AGCBaseCharacter::OnClimbableTopReached()
+{
+	Mantle(true);
+	bInteracting = false;
+	InteractiveActors.RemoveSingleSwap(CurrentInteractable);
+	CurrentInteractable = nullptr;
+}
+
+void AGCBaseCharacter::OnStoppedClimbing(const AInteractiveActor* Interactable)
+{
+	if (bInteracting && Interactable == CurrentInteractable)
+	{
+		// TODO refactor so that these fields are updated in a single method
+		bInteracting = false;
+		CurrentInteractable = nullptr;		
+	}
+}
+
+void AGCBaseCharacter::OnZiplineObstacleHit(FHitResult Hit)
+{
+	if (Hit.bBlockingHit)
+	{
+		StopZiplining();
+	}
+}
+
+void AGCBaseCharacter::StopZiplining()
+{
+	GCMovementComponent->StopZiplining();
+	ResetInteraction();
+}
+
+FZiplineParams AGCBaseCharacter::GetZipliningParameters(const AZipline* Zipline) const
+{
+	FZiplineParams ZiplineParams;
+	ZiplineParams.Friction = Zipline->GetCableFriction();
+	ZiplineParams.ZiplineNormalizedDirection = Zipline->GetZiplineDirection().GetSafeNormal();
+	ZiplineParams.DeclinationAngle = Zipline->GetDeclinationAngle();
+	const FVector TopPoleLocation = Zipline->GetTopPoleWorldLocation();
+	const FVector BottomPoleLocation = Zipline->GetBottomPoleWorldLocation();
+	const FVector TopPoleProjection = FVector(TopPoleLocation.X, TopPoleLocation.Y, BottomPoleLocation.Z); 	
+	ZiplineParams.MovementPlane = FPlane(TopPoleLocation,BottomPoleLocation, TopPoleProjection);
+				
+	const float ZiplineDistance = (TopPoleLocation - BottomPoleLocation).Size();
+	const FVector& ActorLocation = GetActorLocation();
+	FVector ProjectedVelocity = FVector::VectorPlaneProject(GetVelocity(), ZiplineParams.MovementPlane.GetNormal());
+	ZiplineParams.CurrentSpeed = ProjectedVelocity.Size();
+	
+	ZiplineParams.DeclinationAngleSin = FMath::Sin(FMath::DegreesToRadians(ZiplineParams.DeclinationAngle));
+	ZiplineParams.DeclinationAngleCos = FMath::Cos(FMath::DegreesToRadians(ZiplineParams.DeclinationAngle));
+	
+	FVector SocketOffset = GetMesh()->GetSocketTransform(ZiplineHandPositionSocketName,RTS_Actor).GetLocation();
+	const float CharacterToZiplineDistance = (TopPoleLocation - ActorLocation).Size();
+	FVector NewActorLocation = TopPoleLocation
+		+ (BottomPoleLocation - TopPoleLocation) * CharacterToZiplineDistance / ZiplineDistance;
+	float RotationHeightDeltaAngle = (180.f - ZiplineParams.DeclinationAngle) * 0.5f;
+	const UCapsuleComponent* CharacterCapsule = GetCapsuleComponent();
+	const float HalfHeightAdjustment = (CharacterCapsule->GetScaledCapsuleHalfHeight() + CharacterCapsule->GetScaledCapsuleRadius())
+	* ZiplineParams.DeclinationAngleSin * (1.f / FMath::Tan(FMath::DegreesToRadians(RotationHeightDeltaAngle)));
+	ZiplineParams.CorrectedActorLocation = NewActorLocation - SocketOffset - HalfHeightAdjustment * FVector::UpVector;
+	return ZiplineParams;
+}
+
+void AGCBaseCharacter::ResetInteraction()
+{
+	bInteracting = false;
+	CurrentInteractable = nullptr;
+}
+
+bool AGCBaseCharacter::CanMantle() const
+{
+	return !GCMovementComponent->IsMantling()
+		&& !GCMovementComponent->IsProning();
+}
+
+void AGCBaseCharacter::OnSprintEnd_Implementation()
+{
+}
+
+void AGCBaseCharacter::OnSprintStart_Implementation()
+{
+}
 
 void AGCBaseCharacter::Mantle(bool bForce)
 {
@@ -387,70 +428,35 @@ void AGCBaseCharacter::Mantle(bool bForce)
 	}
 }
 
-const FMantlingSettings& AGCBaseCharacter::GetMantlingSettings(float Height) const
+void AGCBaseCharacter::RegisterInteractiveActor(const AInteractiveActor* InteractiveActor)
 {
-	return Height <= MantleLowMaxHeight ? MantleLowSettings : MantleHighSettings;
+	InteractiveActor->Tags;
+	InteractiveActors.AddUnique(InteractiveActor);
 }
 
-bool AGCBaseCharacter::CanMantle() const
+void AGCBaseCharacter::UnregisterInteractiveActor(const AInteractiveActor* InteractiveActor)
 {
-	return !GCMovementComponent->IsMantling()
-		&& !GCMovementComponent->IsProning()
-		&& !GCMovementComponent->IsWallrunning();
+	if (InteractiveActor != CurrentInteractable)
+		InteractiveActors.RemoveSingleSwap(InteractiveActor);
 }
 
-#pragma endregion MANTLE
-
-#pragma region CLIMB
-
-void AGCBaseCharacter::OnClimbableTopReached()
+const AInteractiveActor* AGCBaseCharacter::GetPreferableInteractable()
 {
-	Mantle(true);
-	bInteracting = false;
-	InteractiveActors.RemoveSingleSwap(CurrentInteractable);
-	CurrentInteractable = nullptr;
-}
+	auto InteractablesCount = InteractiveActors.Num();	
+	if (InteractablesCount <= 0)
+		return nullptr;
 
-void AGCBaseCharacter::OnStoppedClimbing(const AInteractiveActor* Interactable)
-{
-	if (bInteracting && Interactable == CurrentInteractable)
+	const AInteractiveActor* Interactable = nullptr;
+	while (InteractablesCount > 0)
 	{
-		// TODO refactor so that these fields are updated in a single method
-		bInteracting = false;
-		CurrentInteractable = nullptr;		
+		Interactable = InteractiveActors[0];
+		if (IsValid(Interactable))
+			break;
+		
+		InteractiveActors.RemoveSingleSwap(CurrentInteractable);
+		Interactable = nullptr;
+		InteractablesCount--;
 	}
-}
-
-#pragma endregion CLIMB
-
-#pragma region WALLRUN
-
-void AGCBaseCharacter::StartWallrun()
-{
-	if (CanAttemptWallrun())
-	{
-		GCMovementComponent->RequestWallrunning();
-	}
-}
-
-void AGCBaseCharacter::StopWallrun()
-{
-	GCMovementComponent->StopWallrunning(false);
-}
-
-bool AGCBaseCharacter::CanAttemptWallrun() const
-{
-	return IsPendingMovement()
-		&& CurrentStamina > 0.f
-		&& (GCMovementComponent->IsMovingOnGround() || GCMovementComponent->IsFalling())
-		&& !GCMovementComponent->IsCrouching()
-		&& !GCMovementComponent->IsProning();
-}
-
-#pragma endregion WALLRUN
-
-void AGCBaseCharacter::MoveForward(float Value)
-{
-	CurrentInputForward = Value;
-	GCMovementComponent->SetForwardInput(Value);
+	
+	return Interactable;
 }

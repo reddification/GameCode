@@ -44,11 +44,11 @@ protected:
 	class USpringArmComponent* SpringArmComponent;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float SprintSpringArmOffsetDuration = 0.5f;
+	float SprintSpringArmOffsetDuration = 0.5;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float SprintSpringArmOffset = 420.f;
-
+	float SprintSpringArmOffset = 420;
+	
 	void SetSpringArmPosition(float alpha) const;
 
 	virtual void OnSprintStart_Implementation() override;
@@ -59,16 +59,11 @@ protected:
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UCurveFloat* SprintSpringArmTimelineCurve = nullptr;
-
 private:
 	FTimeline SprintSpringArmTimeline;
 
-	float DefaultSpringArmOffset = 0.f;
+	float DefaultSpringArmOffset = 0;
 
 	void InitSprintSpringArm();
-	void AdjustSpringArm(const FVector& Adjustment);
-	void AdjustSpringArmRelative(const FVector& Adjustment);
-	void OnWallrunBegin(ESide Side);
-	void OnWallrunEnd(ESide Side);
-	void OnWallrunChanged(ESide Side, int AdjustmentModification);
+	void AdjustSpringArm(float Adjustment);
 };

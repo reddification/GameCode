@@ -34,8 +34,7 @@ void UGCBaseCharacterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	bSwimming = MovementComponent->IsSwimming();	
 	bClimbingLadder = MovementComponent->IsClimbing();
 	ClimbingRatio = bClimbingLadder ? MovementComponent->GetClimbingSpeedRatio() : 0.f;
-	bWallRunning = MovementComponent->IsWallrunning();
-	WallrunSide = MovementComponent->GetWallrunSide();
+	bZiplining = MovementComponent->IsZiplining();
 	
 	const auto& IkData = Character->InverseKinematicsComponent->GetIkData();
 	// constraining max foot elevation when crouching because it looks shitty with current animations

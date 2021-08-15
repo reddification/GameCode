@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 
+#include "GameCode/Actors/Interactive/Environment/Zipline.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
 #include "GameCode/Data/MantlingSettings.h"
 #include "GameFramework/Character.h"
@@ -30,6 +31,7 @@ protected:
 
 public:
 	virtual void Tick(float DeltaTime) override;
+	void StopZiplining();
 
 	void Interact();
 	virtual void Turn(float Value) {}
@@ -37,7 +39,7 @@ public:
 	virtual void LookUp(float Value) {}
 	virtual void TurnAtRate(float Value) {}
 	virtual void LookUpAtRate(float Value) {}
-	virtual void MoveForward(float Value);
+	virtual void MoveForward(float Value) { CurrentInputForward = Value; }
 	virtual void MoveRight(float Value) { CurrentInputRight = Value; }
 	virtual void SwimForward(float Value){ CurrentInputForward = Value; }
 	virtual void SwimRight(float Value) { CurrentInputRight = Value; }
@@ -47,12 +49,11 @@ public:
 	
 	virtual void StartSprint();
 	virtual void StopSprint();
-	virtual void StopWallrun();
-	virtual void StartWallrun();
-	
+
 	virtual void ClimbUp(float Value) { CurrentInputForward = Value; }
 	virtual void ClimbDown(float Value) { CurrentInputForward = Value; }
 
+	
 	const UGCBaseCharacterMovementComponent* GetGCMovementComponent () const { return GCMovementComponent; }
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
@@ -62,7 +63,6 @@ public:
 	class ULedgeDetectionComponent* LedgeDetectionComponent; 
 
 	virtual void OnJumped_Implementation() override;
-	virtual bool CanJumpInternal_Implementation() const override;
 
 	virtual bool CanCrouch() const override;
 	virtual void OnStartCrouchOrProne(float HalfHeightAdjust);
@@ -92,7 +92,7 @@ protected:
 	float StaminaRestoreVelocity = 20.f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float SprintStaminaConsumptionRate = 10.f;
+	float SprintStaminaConsumptionVelocity = 10.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float JumpStaminaConsumption = 10.f;
@@ -105,37 +105,42 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Movement|Mantling", meta=(ClampMin=0.f, UIMin=0.f))
 	float MantleLowMaxHeight = 135.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Movement|Zipline")
+	FName ZiplineHandPositionSocketName = FName("zipline_hand_position");
 	
 	virtual void OnSprintStart_Implementation();
 	virtual void OnSprintEnd_Implementation();
 	virtual void Falling() override;
-	virtual void Landed(const FHitResult& Hit) override;
 	float CurrentInputForward = 0.f;
 	float CurrentInputRight = 0.f;
 	bool IsPendingMovement() const { return CurrentInputForward != 0 || CurrentInputRight != 0; }
 
 	virtual void OnClimbableTopReached();
 	virtual void OnStoppedClimbing(const AInteractiveActor* Interactable);
-
+	virtual void OnZiplineObstacleHit(FHitResult Hit);
 	bool CanMantle() const;
 
-	virtual bool CanAttemptWallrun() const;
-
-	UGCBaseCharacterMovementComponent* GCMovementComponent = nullptr;
+	virtual bool CanJumpInternal_Implementation() const override;
 
 private:
 	bool bSprintRequested = false;
 	float CurrentStamina = 0.f;
 	
+	UGCBaseCharacterMovementComponent* GCMovementComponent = nullptr;
+
 	void TryChangeSprintState();
 	bool CanRestoreStamina() const;
 	bool IsConsumingStamina() const;
-	float GetCurrentStaminaConsumption(float DeltaTime) const;
+	float GetCurrentStaminaConsumption() const;
 	void UpdateStamina(float DeltaTime);
 	void ChangeStaminaValue(float StaminaModification);
 	const FMantlingSettings& GetMantlingSettings(float Height) const;
+	void ResetInteraction();
 
 	void TryStopInteracting();
+	FZiplineParams GetZipliningParameters(const AZipline* Zipline) const;
+	const AInteractiveActor* GetPreferableInteractable();
 	void TryStartInteracting();
 	bool bInteracting = false;
 	

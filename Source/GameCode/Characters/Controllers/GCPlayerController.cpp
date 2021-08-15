@@ -38,9 +38,6 @@ void AGCPlayerController::SetupInputComponent()
 	InputComponent->BindAction("Interact", IE_Pressed, this, &AGCPlayerController::Interact);
 	InputComponent->BindAction("Prone", IE_Pressed, this, &AGCPlayerController::ToggleProneState);
 	InputComponent->BindAction("Crouch", IE_Pressed, this, &AGCPlayerController::ToggleCrouchState);
-
-	InputComponent->BindAction("Wallrun", EInputEvent::IE_Pressed, this, &AGCPlayerController::StartWallrun);
-	InputComponent->BindAction("Wallrun", EInputEvent::IE_Released, this, &AGCPlayerController::StopWallrun);
 }
 
 void AGCPlayerController::Interact()
@@ -165,20 +162,4 @@ void AGCPlayerController::StopSprint()
 {
 	if (BaseCharacter.IsValid())
 		BaseCharacter->StopSprint();
-}
-
-void AGCPlayerController::StartWallrun()
-{
-	if (BaseCharacter.IsValid())
-	{
-		BaseCharacter->StartWallrun();
-	}
-}
-
-void AGCPlayerController::StopWallrun()
-{
-	if (BaseCharacter.IsValid())
-	{
-		BaseCharacter->StopWallrun();
-	}
 }

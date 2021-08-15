@@ -10,7 +10,8 @@ UENUM()
 enum class EInteractionType : uint8
 {
 	None = 0 UMETA(DisplayName="None"),
-	Climbing = 1 UMETA(DisplayName="Climbing")
+	Climbing = 1 UMETA(DisplayName="Climbing"),
+	Ziplining = 2 UMETA(DisplayName="Ziplining"),
 };
 
 UCLASS(Abstract, NotBlueprintable)
