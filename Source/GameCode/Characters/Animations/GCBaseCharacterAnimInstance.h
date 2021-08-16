@@ -4,11 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "Animation/AnimInstance.h"
+#include "GameCode/Data/GCMovementMode.h"
 #include "GCBaseCharacterAnimInstance.generated.h"
 
-/**
- * 
- */
 UCLASS()
 class GAMECODE_API UGCBaseCharacterAnimInstance : public UAnimInstance
 {
@@ -19,7 +17,7 @@ class GAMECODE_API UGCBaseCharacterAnimInstance : public UAnimInstance
 	
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float Speed = 0;
+	float Speed = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	uint8 bInAir:1;
@@ -44,6 +42,12 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	uint8 bZiplining:1;	
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	uint8 bWallRunning:1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	ESide WallrunSide = ESide::None;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Transient, Category = "Character|IK")
 	FVector RightFootEffectorLocation = FVector::ZeroVector;

@@ -17,9 +17,6 @@ struct FWallrunSettings
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="500", UIMin="500"))
 	float JumpOffSpeed = 1000.f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="500", UIMin="500"))
-	FVector JumpOffVelocityMultiplier = FVector();
-	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="200", UIMin="200"))
 	float MaxDeltaHeight = 300.f;	
 

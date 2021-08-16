@@ -23,6 +23,8 @@ protected:
 
 private:
 	TSoftObjectPtr<class AGCBaseCharacter> BaseCharacter;
+	void StartWallrun();
+	void StopWallrun();
 	void Interact();
 	void ClimbDown(float Value);
 	void ClimbUp(float Value);

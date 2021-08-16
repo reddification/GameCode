@@ -31,15 +31,16 @@ protected:
 
 public:
 	virtual void Tick(float DeltaTime) override;
-	void StopZiplining();
 
+#pragma region INPUT
+	
 	void Interact();
 	virtual void Turn(float Value) {}
 	virtual void ToggleCrouchState();
 	virtual void LookUp(float Value) {}
 	virtual void TurnAtRate(float Value) {}
 	virtual void LookUpAtRate(float Value) {}
-	virtual void MoveForward(float Value) { CurrentInputForward = Value; }
+	virtual void MoveForward(float Value);
 	virtual void MoveRight(float Value) { CurrentInputRight = Value; }
 	virtual void SwimForward(float Value){ CurrentInputForward = Value; }
 	virtual void SwimRight(float Value) { CurrentInputRight = Value; }
@@ -49,10 +50,15 @@ public:
 	
 	virtual void StartSprint();
 	virtual void StopSprint();
-
+	virtual void StopWallrun();
+	virtual void StartWallrun();
+	
 	virtual void ClimbUp(float Value) { CurrentInputForward = Value; }
 	virtual void ClimbDown(float Value) { CurrentInputForward = Value; }
 
+	void StopZiplining();
+
+#pragma endregion 
 	
 	const UGCBaseCharacterMovementComponent* GetGCMovementComponent () const { return GCMovementComponent; }
 
@@ -85,6 +91,8 @@ protected:
 	UFUNCTION(BlueprintNativeEvent, Category = "Character|Movement")
 	void OnSprintEnd();
 
+#pragma region STAMINA
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float MaxStamina = 100.f;
 	
@@ -92,11 +100,15 @@ protected:
 	float StaminaRestoreVelocity = 20.f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float SprintStaminaConsumptionVelocity = 10.f;
+	float SprintStaminaConsumptionRate = 10.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float JumpStaminaConsumption = 10.f;
 
+#pragma endregion STAMINA
+
+#pragma region MANTLING
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Movement|Mantling")
 	FMantlingSettings MantleHighSettings;
 
@@ -105,6 +117,8 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Movement|Mantling", meta=(ClampMin=0.f, UIMin=0.f))
 	float MantleLowMaxHeight = 135.f;
+
+#pragma endregion MANTLING
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Movement|Zipline")
 	FName ZiplineHandPositionSocketName = FName("zipline_hand_position");
@@ -121,18 +135,20 @@ protected:
 	virtual void OnZiplineObstacleHit(FHitResult Hit);
 	bool CanMantle() const;
 
+	virtual bool CanAttemptWallrun() const;
+
+	UGCBaseCharacterMovementComponent* GCMovementComponent = nullptr;
+
 	virtual bool CanJumpInternal_Implementation() const override;
 
 private:
 	bool bSprintRequested = false;
 	float CurrentStamina = 0.f;
 	
-	UGCBaseCharacterMovementComponent* GCMovementComponent = nullptr;
-
 	void TryChangeSprintState();
 	bool CanRestoreStamina() const;
 	bool IsConsumingStamina() const;
-	float GetCurrentStaminaConsumption() const;
+	float GetCurrentStaminaConsumption(float DeltaTime) const;
 	void UpdateStamina(float DeltaTime);
 	void ChangeStaminaValue(float StaminaModification);
 	const FMantlingSettings& GetMantlingSettings(float Height) const;
