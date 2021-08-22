@@ -4,7 +4,8 @@ This repository contains XYZ-Gamecode cource project progress. It is currently u
 ## Personally implemented mechanics:
 - Moving platforms
 - Inverse kinematics for legs
-- Proning
+- Proning/crawling
+- Stamina consumption and its overall effect on character
 - Zipline
 - Wallrun
 - Running slides
