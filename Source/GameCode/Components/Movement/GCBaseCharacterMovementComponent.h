@@ -3,10 +3,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
-
 #include "GameCode/Data/GCMovementMode.h"
+
 #include "GameCode/Data/MantlingMovementParameters.h"
+#include "GameCode/Data/Posture.h"
+#include "GameCode/Data/Side.h"
+#include "GameCode/Data/SlideData.h"
+#include "GameCode/Data/SlideSettings.h"
 #include "GameCode/Data/StopClimbingMethod.h"
+#include "GameCode/Data/WakeUpParams.h"
 #include "GameCode/Data/WallrunData.h"
 #include "GameCode/Data/WallrunSettings.h"
 #include "GameCode/Data/ZiplineParams.h"
@@ -14,7 +19,7 @@
 #include "GCBaseCharacterMovementComponent.generated.h"
 
 DECLARE_DELEGATE_OneParam(FCrouchedOrProned, float HalfHeightAdjust)
-DECLARE_DELEGATE_OneParam(FUncrouchedOrUnproned, float HalfHeightAdjust)
+DECLARE_DELEGATE_OneParam(FWokeUp, float HalfHeightAdjust)
 DECLARE_DELEGATE(FClimbableTopReached)
 DECLARE_DELEGATE_OneParam(FStoppedClimbing, const class AInteractiveActor* Interactable)
 DECLARE_DELEGATE_OneParam(FWallrunBegin, const ESide WallrunSide)
@@ -28,20 +33,23 @@ class GAMECODE_API UGCBaseCharacterMovementComponent : public UCharacterMovement
 	GENERATED_BODY()
 
 public:
+	void PreparePostureHalfHeights();
 	virtual void BeginPlay() override;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin=0, UIMin=0))
-	float ProneCapsuleRadus = 40.0f;
-
 	virtual void PhysicsRotation(float DeltaTime) override;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin=0, UIMin=0))
-	float ProneCapsuleHalfHeight = 40.0f;
-	
-	bool IsSprinting() const { return IsMovingOnGround() && bSprinting;}
-	bool IsProning() const {return bProning;}
-	void StartSprint();
+	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
+	virtual bool CanAttemptJump() const override { return Super::CanAttemptJump() || IsSliding(); }
+	bool TryStartSprint();
 	void StopSprint(); 
+	bool IsSprinting() const { return IsMovingOnGround() && bSprinting;}
+
+	bool IsOutOfStamina() const { return bOutOfStamina; } 
+	void SetIsOutOfStamina(bool bNewOutOfStamina);
+
+#pragma region CROUCH/PRONE
+	
+	virtual bool IsCrouching() const override { return CurrentPosture == EPosture::Crouching; }
+	bool IsProning() const { return CurrentPosture == EPosture::Proning; } 
+
 	virtual float GetMaxSpeed() const override;
 	void TryProne();
 	void TryStandUp();
@@ -49,14 +57,12 @@ public:
 	virtual void Crouch(bool bClientSimulation = false) override;
 	virtual void UnCrouch(bool bClientSimulation = false) override;
 
-	void SetForwardInput(float Value) { CurrentForwardInput = Value; }
-	
-	bool IsOutOfStamina() const { return bOutOfStamina; } 
-	void SetIsOutOfStamina(bool bNewOutOfStamina);
-
-	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	FCrouchedOrProned CrouchedOrProned;
-	FUncrouchedOrUnproned UncrouchedOrUnproned;
+	FWokeUp WokeUp;
+
+#pragma endregion CROUCH/PRONE
+
+	void SetForwardInput(float Value) { CurrentForwardInput = Value; }
 	
 	bool TryStartMantle(const FMantlingMovementParameters& NewMantlingParameters);
 	void EndMantle();
@@ -83,7 +89,13 @@ public:
 	void StopZiplining();
 
 #pragma endregion ZIPLINE
-	
+
+	bool IsSliding() const;
+	bool TryStartSliding();
+	void StopSliding();
+	void ResetFromSliding();
+	void ResetSlide();
+
 #pragma region WALLRUN
 
 	void RequestWallrunning();
@@ -98,18 +110,31 @@ public:
 	FWallrunEnd WallrunEndEvent;
 	
 #pragma endregion 
+
+	const EPosture& GetCurrentPosture() const { return CurrentPosture; }
 	
 protected:
+	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
+
+#pragma region SPEED UPROPERTIES
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement|Speed", meta=(ClampMin=0, UIMin=0))
 	float SprintSpeed = 1200.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement|Speed", meta=(ClampMin=0, UIMin=0))
 	float OutOfStaminaSpeed = 200.f;
-	float DefaultWalkSpeed = 0.f;
-
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement|Speed", meta=(ClampMin=0, UIMin=0))
 	float CrawlSpeed = 200.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement|Zipline")
+	float MinZiplineSpeed = 100.0f;
 	
-	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement|Zipline")
+	float MaxZiplineSpeed = 1600.0f;
+	
+#pragma endregion SPEED UPROPERTIES
+
+#pragma region CAPSULE
 	
 	UPROPERTY(Category="Character Movement|Swimming", EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0", UIMin="0"))
 	float SwimmingCapsuleHalfHeight = 50.f;
@@ -117,6 +142,14 @@ protected:
 	UPROPERTY(Category="Character Movement|Swimming", EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0", UIMin="0"))
 	float SwimmingCapsuleRadius = 50.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin=0, UIMin=0))
+	float ProneCapsuleRadus = 40.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin=0, UIMin=0))
+	float ProneCapsuleHalfHeight = 40.0f;
+
+#pragma endregion CAPSULE
+	
 #pragma region CLIMB
 
 	UPROPERTY(Category="Character Movement|Climbing", EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0", UIMin="0"))
@@ -124,7 +157,6 @@ protected:
 
 	UPROPERTY(Category="Character Movement|Climbing", EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0", UIMin="0"))
 	float ClimbingBrakingDeceleration = 2048.0f;
-
 	
 	UPROPERTY(Category="Character Movement|Climbing", EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0", UIMin="0"))
 	float ClimbingOffset = 60.f;
@@ -140,37 +172,39 @@ protected:
 
 #pragma endregion 
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement|Zipline")
-	float MinZiplineSpeed = 100.0f;
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement|Zipline")
-	float MaxZiplineSpeed = 1600.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FWallrunSettings WallrunSettings;
-
-	FWallrunData WallrunData;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	FSlideSettings SlideSettings;
 	
 	virtual void PhysCustom(float DeltaTime, int32 Iterations) override;	
 	
 private:
+	/* State that affects capsule half height */
+	EPosture CurrentPosture = EPosture::Standing;
 	float CurrentForwardInput = 0.f;
+	float DefaultWalkSpeed = 0.f;
+
 	bool bSprinting = false;
 	bool bOutOfStamina = false;
-
 	bool bWantsToProne = false;
-	bool bProning = false;
 
 	void Prone();
 	void UnProne();
-	
 	bool CanUnprone();
 	bool CanProne();
 	
 	bool TryCrouchOrProne(float NewCapsuleHalfHeight, float NewCapsuleRadius);
-	bool TryUncrouchOrUnprone();
+	void FillWakeUpParams(FWakeUpParams& WakeUpParams) const;
+	bool TryWakeUpToState(EPosture DesiredPosture, bool bClientSimulation = false);
+	bool TryWakeUp(float DesiredHalfHeight, const FWakeUpParams& WakeUpParams, bool bClientSimulation = false);
 
 	FMantlingMovementParameters MantlingParameters;
 	FZiplineParams ZiplineParams;
+	FWallrunData WallrunData;
+	FSlideData SlideData;
 	
 	FTimerHandle MantlingTimerHandle;
 	const ALadder* CurrentClimbable = nullptr;
@@ -179,6 +213,7 @@ private:
 	void PhysCustomClimbing(float DeltaTime, int32 Iterations);
 	void PhysCustomWallRun(float DeltaTime, int32 iterations);
 	void PhysCustomZiplining(float DeltaTime, int32 Iterations);
+	void PhysCustomSliding(float DeltaTime, int32 Iterations);
 	
 	TWeakObjectPtr<class AGCBaseCharacter> GCCharacter;
 
@@ -197,4 +232,7 @@ private:
 
 	mutable class UGCDebugSubsystem* DebugSubsystem;
 	UGCDebugSubsystem* GetDebugSubsystem() const;
+	bool IsInCustomMovementMode(const EGCMovementMode& Mode) const;
+
+	TMap<EPosture, float> PostureCapsuleHalfHeights;
 };

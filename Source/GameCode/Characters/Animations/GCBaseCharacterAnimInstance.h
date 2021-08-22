@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Animation/AnimInstance.h"
 #include "GameCode/Data/GCMovementMode.h"
+#include "GameCode/Data/Side.h"
 #include "GCBaseCharacterAnimInstance.generated.h"
 
 UCLASS()
@@ -48,6 +49,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	ESide WallrunSide = ESide::None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	uint8 bSliding:1;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Transient, Category = "Character|IK")
 	FVector RightFootEffectorLocation = FVector::ZeroVector;

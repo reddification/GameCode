@@ -23,6 +23,8 @@ protected:
 
 private:
 	TSoftObjectPtr<class AGCBaseCharacter> BaseCharacter;
+	void StartSliding();
+	void StopSliding();
 	void StartWallrun();
 	void StopWallrun();
 	void Interact();

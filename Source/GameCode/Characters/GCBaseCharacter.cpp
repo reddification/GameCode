@@ -29,7 +29,7 @@ AGCBaseCharacter::AGCBaseCharacter(const FObjectInitializer& ObjectInitializer)
 	GCMovementComponent->ClimbableTopReached.BindUObject(this, &AGCBaseCharacter::OnClimbableTopReached);
 	GCMovementComponent->StoppedClimbing.BindUObject(this, &AGCBaseCharacter::OnStoppedClimbing);
 	GCMovementComponent->CrouchedOrProned.BindUObject(this, &AGCBaseCharacter::OnStartCrouchOrProne);
-	GCMovementComponent->UncrouchedOrUnproned.BindUObject(this, &AGCBaseCharacter::OnEndCrouchOrProne);
+	GCMovementComponent->WokeUp.BindUObject(this, &AGCBaseCharacter::OnEndCrouchOrProne);
 	GCMovementComponent->ZiplineObstacleHit.BindUObject(this, &AGCBaseCharacter::OnZiplineObstacleHit);
 }
 
@@ -45,7 +45,8 @@ void AGCBaseCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 	UpdateStamina(DeltaTime);
 	TryChangeSprintState();
-	if (!GCMovementComponent->IsProning() && GCMovementComponent->IsMovingOnGround())
+	const EPosture CurrentPosture = GCMovementComponent->GetCurrentPosture();
+	if (GCMovementComponent->IsMovingOnGround() && (CurrentPosture == EPosture::Standing || CurrentPosture == EPosture::Crouching))
 	{
 		InverseKinematicsComponent->CalculateIkData(GetMesh(), GetCapsuleComponent()->GetScaledCapsuleHalfHeight(),
 			GetActorLocation(), bIsCrouched, DeltaTime);
@@ -119,7 +120,7 @@ bool AGCBaseCharacter::CanRestoreStamina() const
 
 bool AGCBaseCharacter::IsConsumingStamina() const
 {
-	return GCMovementComponent->IsSprinting() || GCMovementComponent->IsWallrunning() || GCMovementComponent->IsSwimming();
+	return !GCMovementComponent->IsMovingOnGround() || GCMovementComponent->IsSprinting();
 }
 
 #pragma endregion STAMINA
@@ -144,14 +145,14 @@ bool AGCBaseCharacter::CanSprint() const
 {
 	return IsPendingMovement()
 		&& GCMovementComponent->IsMovingOnGround() && !GCMovementComponent->IsOutOfStamina()
-		&& !GCMovementComponent->IsProning();
+		&& GCMovementComponent->GetCurrentPosture() != EPosture::Proning;
 }
 
 void AGCBaseCharacter::TryChangeSprintState()
 {
 	if (bSprintRequested && !GCMovementComponent->IsSprinting() && CanSprint())
 	{
-		GCMovementComponent->StartSprint();
+		GCMovementComponent->TryStartSprint();
 		OnSprintStart();
 	}
 	else if ((!bSprintRequested || !IsPendingMovement()) && GCMovementComponent->IsSprinting())
@@ -175,7 +176,7 @@ void AGCBaseCharacter::OnSprintStart_Implementation()
 
 void AGCBaseCharacter::Jump()
 {
-	if (GCMovementComponent->IsProning())
+	if (GCMovementComponent->GetCurrentPosture() == EPosture::Proning)
 	{
 		GCMovementComponent->TryStandUp();
 	}
@@ -345,7 +346,7 @@ void AGCBaseCharacter::ResetInteraction()
 
 void AGCBaseCharacter::ToggleCrouchState()
 {
-	if (!bIsCrouched)
+	if (!bIsCrouched && !GCMovementComponent->IsSliding())
 	{
 		GCMovementComponent->TryCrouch();
 	}
@@ -376,7 +377,7 @@ void AGCBaseCharacter::OnEndCrouchOrProne(float HalfHeightAdjust)
 {
 	RecalculateBaseEyeHeight();
 	FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
-	MeshRelativeLocation.Z = GetDefault<AGCBaseCharacter>(GetClass())->GetMesh()->GetRelativeLocation().Z;
+	MeshRelativeLocation.Z -= HalfHeightAdjust;// GetDefault<AGCBaseCharacter>(GetClass())->GetMesh()->GetRelativeLocation().Z;
 	BaseTranslationOffset.Z = MeshRelativeLocation.Z;
 }
 
@@ -477,7 +478,8 @@ const FMantlingSettings& AGCBaseCharacter::GetMantlingSettings(float Height) con
 bool AGCBaseCharacter::CanMantle() const
 {
 	return !GCMovementComponent->IsMantling()
-		&& !GCMovementComponent->IsProning()
+		&& (GCMovementComponent->GetCurrentPosture() == EPosture::Standing
+			|| GCMovementComponent->GetCurrentPosture() == EPosture::Crouching)
 		&& !GCMovementComponent->IsWallrunning();
 }
 
@@ -524,11 +526,30 @@ bool AGCBaseCharacter::CanAttemptWallrun() const
 	return IsPendingMovement()
 		&& CurrentStamina > 0.f
 		&& (GCMovementComponent->IsMovingOnGround() || GCMovementComponent->IsFalling())
-		&& !GCMovementComponent->IsCrouching()
-		&& !GCMovementComponent->IsProning();
+		&& GCMovementComponent->GetCurrentPosture() == EPosture::Standing;
 }
 
 #pragma endregion WALLRUN
+
+#pragma region SLIDE
+
+void AGCBaseCharacter::TryStartSliding()
+{
+	if (CanSlide())
+	{
+		GCMovementComponent->TryStartSliding();
+	}
+}
+
+void AGCBaseCharacter::StopSliding()
+{
+	if (GCMovementComponent->IsSliding())
+	{
+		GCMovementComponent->StopSliding();
+	}
+}
+
+#pragma endregion SLIDE
 
 void AGCBaseCharacter::MoveForward(float Value)
 {

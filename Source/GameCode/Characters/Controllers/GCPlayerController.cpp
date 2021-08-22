@@ -36,11 +36,15 @@ void AGCPlayerController::SetupInputComponent()
 	InputComponent->BindAxis("ClimbDown", this, &AGCPlayerController::ClimbDown);
 
 	InputComponent->BindAction("Interact", IE_Pressed, this, &AGCPlayerController::Interact);
+
+	InputComponent->BindAction("Slide", EInputEvent::IE_Pressed, this, &AGCPlayerController::StartSliding);
+	InputComponent->BindAction("Slide", EInputEvent::IE_Released, this, &AGCPlayerController::StopSliding);
 	InputComponent->BindAction("Prone", IE_Pressed, this, &AGCPlayerController::ToggleProneState);
 	InputComponent->BindAction("Crouch", IE_Pressed, this, &AGCPlayerController::ToggleCrouchState);
 
 	InputComponent->BindAction("Wallrun", EInputEvent::IE_Pressed, this, &AGCPlayerController::StartWallrun);
 	InputComponent->BindAction("Wallrun", EInputEvent::IE_Released, this, &AGCPlayerController::StopWallrun);
+	
 }
 
 void AGCPlayerController::Interact()
@@ -140,6 +144,23 @@ void AGCPlayerController::Jump()
 	if (BaseCharacter.IsValid())
 		BaseCharacter->Jump();
 }
+
+void AGCPlayerController::StartSliding()
+{
+	if (BaseCharacter.IsValid())
+	{
+		BaseCharacter->TryStartSliding();
+	}
+}
+
+void AGCPlayerController::StopSliding()
+{
+	if (BaseCharacter.IsValid())
+	{
+		BaseCharacter->StopSliding();
+	}
+}
+
 
 void AGCPlayerController::ToggleCrouchState()
 {

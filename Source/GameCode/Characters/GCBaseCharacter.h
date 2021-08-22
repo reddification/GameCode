@@ -61,7 +61,7 @@ public:
 #pragma endregion 
 	
 	const UGCBaseCharacterMovementComponent* GetGCMovementComponent () const { return GCMovementComponent; }
-
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	class UInverseKinematicsComponent* InverseKinematicsComponent;
 
@@ -81,6 +81,9 @@ public:
 
 	float GetCurrentInputForward() const { return CurrentInputForward; }
 	float GetCurrentInputRight() const { return CurrentInputRight; }
+
+	void TryStartSliding();
+	void StopSliding();
 	
 protected:
 	virtual bool CanSprint() const;
@@ -144,7 +147,7 @@ protected:
 private:
 	bool bSprintRequested = false;
 	float CurrentStamina = 0.f;
-	
+
 	void TryChangeSprintState();
 	bool CanRestoreStamina() const;
 	bool IsConsumingStamina() const;
@@ -152,14 +155,15 @@ private:
 	void UpdateStamina(float DeltaTime);
 	void ChangeStaminaValue(float StaminaModification);
 	const FMantlingSettings& GetMantlingSettings(float Height) const;
-	void ResetInteraction();
-
-	void TryStopInteracting();
 	FZiplineParams GetZipliningParameters(const AZipline* Zipline) const;
-	const AInteractiveActor* GetPreferableInteractable();
-	void TryStartInteracting();
-	bool bInteracting = false;
 	
+	void TryStartInteracting();
+	void TryStopInteracting();
+	void ResetInteraction();
+	const AInteractiveActor* GetPreferableInteractable();
+	bool bInteracting = false;
 	const AInteractiveActor* CurrentInteractable = nullptr;
 	TArray<const AInteractiveActor*, TInlineAllocator<8>> InteractiveActors;
+
+	bool CanSlide() const { return GCMovementComponent->IsSprinting(); }
 };
