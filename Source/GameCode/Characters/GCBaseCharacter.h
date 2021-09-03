@@ -5,6 +5,7 @@
 #include "GameCode/Actors/Interactive/Environment/Zipline.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
 #include "GameCode/Data/MantlingSettings.h"
+#include "GameCode/Data/MontagePlayResult.h"
 #include "GameFramework/Character.h"
 #include "GCBaseCharacter.generated.h"
 
@@ -83,7 +84,9 @@ public:
 	float GetCurrentInputRight() const { return CurrentInputRight; }
 
 	void TryStartSliding();
-	void StopSliding();
+	void StopSliding(bool bForce = false);
+
+	bool IsMovementInputEnabled() const { return bMovementInputEnabled; }
 	
 protected:
 	virtual bool CanSprint() const;
@@ -126,12 +129,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character|Movement|Zipline")
 	FName ZiplineHandPositionSocketName = FName("zipline_hand_position");
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Character|Movement|Hard Land")
+	UAnimMontage* HardLandMontageTP = nullptr;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Character|Movement|Hard Land")
+	float HardLandHeight = 1000.f;
+	
 	virtual void OnSprintStart_Implementation();
 	virtual void OnSprintEnd_Implementation();
 	virtual void Falling() override;
+	virtual void Landed(const FHitResult& Hit) override;
+	virtual void NotifyJumpApex() override;
 	float CurrentInputForward = 0.f;
 	float CurrentInputRight = 0.f;
-	bool IsPendingMovement() const { return CurrentInputForward != 0 || CurrentInputRight != 0; }
+	bool IsPendingMovement() const { return CurrentInputForward != 0 || CurrentInputRight != 0 && bMovementInputEnabled; }
 
 	virtual void OnClimbableTopReached();
 	virtual void OnStoppedClimbing(const AInteractiveActor* Interactable);
@@ -144,6 +155,17 @@ protected:
 
 	virtual bool CanJumpInternal_Implementation() const override;
 
+	virtual void PlayMantleMontage(const FMantlingSettings& MantleSettings, float StartTime);
+	virtual FMontagePlayResult PlayHardLandMontage() const;
+	FMontagePlayResult PlayHardLandMontage(UAnimInstance* AnimInstance, UAnimMontage* AnimMontage) const;
+
+	FOnMontageEnded MontageEndedUnlockControlsEvent;
+	void OnMontageEndedUnlockControls(UAnimMontage* AnimMontage, bool bInterrupted);
+	void SetInputDisabled(bool bDisabledMovement, bool bDisabledCamera);
+	bool bMovementInputEnabled = true;
+	
+	const AInteractiveActor* CurrentInteractable = nullptr;
+	
 private:
 	bool bSprintRequested = false;
 	float CurrentStamina = 0.f;
@@ -156,14 +178,16 @@ private:
 	void ChangeStaminaValue(float StaminaModification);
 	const FMantlingSettings& GetMantlingSettings(float Height) const;
 	FZiplineParams GetZipliningParameters(const AZipline* Zipline) const;
-	
+
 	void TryStartInteracting();
 	void TryStopInteracting();
 	void ResetInteraction();
 	const AInteractiveActor* GetPreferableInteractable();
 	bool bInteracting = false;
-	const AInteractiveActor* CurrentInteractable = nullptr;
+	
 	TArray<const AInteractiveActor*, TInlineAllocator<8>> InteractiveActors;
 
 	bool CanSlide() const { return GCMovementComponent->IsSprinting(); }
+
+	float FallApexWorldZ = 0.f;
 };

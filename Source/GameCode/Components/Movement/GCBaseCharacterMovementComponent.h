@@ -33,7 +33,7 @@ class GAMECODE_API UGCBaseCharacterMovementComponent : public UCharacterMovement
 	GENERATED_BODY()
 
 public:
-	void PreparePostureHalfHeights();
+	void InitPostureHalfHeights();
 	virtual void BeginPlay() override;
 	virtual void PhysicsRotation(float DeltaTime) override;
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
@@ -87,6 +87,7 @@ public:
 	bool IsZiplining() const;
 	bool TryStartZiplining(const FZiplineParams& NewZiplineParams);
 	void StopZiplining();
+	const FZiplineParams& GetZiplineParams() const { return ZiplineParams; }
 
 #pragma endregion ZIPLINE
 
@@ -201,6 +202,8 @@ private:
 	bool TryWakeUpToState(EPosture DesiredPosture, bool bClientSimulation = false);
 	bool TryWakeUp(float DesiredHalfHeight, const FWakeUpParams& WakeUpParams, bool bClientSimulation = false);
 
+	bool CanApplyCustomRotation();
+	
 	FMantlingMovementParameters MantlingParameters;
 	FZiplineParams ZiplineParams;
 	FWallrunData WallrunData;
@@ -234,5 +237,7 @@ private:
 	UGCDebugSubsystem* GetDebugSubsystem() const;
 	bool IsInCustomMovementMode(const EGCMovementMode& Mode) const;
 
+	EMovementMode GetMovementMode();
+	
 	TMap<EPosture, float> PostureCapsuleHalfHeights;
 };

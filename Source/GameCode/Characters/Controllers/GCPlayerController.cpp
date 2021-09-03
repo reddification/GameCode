@@ -49,7 +49,7 @@ void AGCPlayerController::SetupInputComponent()
 
 void AGCPlayerController::Interact()
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
 		BaseCharacter->Interact();
 	}
@@ -57,7 +57,7 @@ void AGCPlayerController::Interact()
 
 void AGCPlayerController::ClimbDown(float Value)
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
 		BaseCharacter->ClimbDown(Value);
 	}
@@ -65,7 +65,7 @@ void AGCPlayerController::ClimbDown(float Value)
 
 void AGCPlayerController::ClimbUp(float Value)
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
 		BaseCharacter->ClimbUp(Value);
 	}
@@ -73,7 +73,7 @@ void AGCPlayerController::ClimbUp(float Value)
 
 void AGCPlayerController::SwimUp(float Value)
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
 		BaseCharacter->SwimUp(Value);
 	}
@@ -81,7 +81,7 @@ void AGCPlayerController::SwimUp(float Value)
 
 void AGCPlayerController::SwimRight(float Value)
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
 		BaseCharacter->SwimRight(Value);
 	}
@@ -89,7 +89,7 @@ void AGCPlayerController::SwimRight(float Value)
 
 void AGCPlayerController::SwimForward(float Value)
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
 		BaseCharacter->SwimForward(Value);
 	}
@@ -98,42 +98,54 @@ void AGCPlayerController::SwimForward(float Value)
 void AGCPlayerController::TurnAtRate(float Value)
 {
 	if (BaseCharacter.IsValid())
+	{
 		BaseCharacter->TurnAtRate(Value);
+	}
 }
 
 void AGCPlayerController::LookUpAtRate(float Value)
 {
 	if (BaseCharacter.IsValid())
+	{
 		BaseCharacter->LookUpAtRate(Value);
+	}
 }
 
 void AGCPlayerController::LookUp(float Value)
 {
 	if (BaseCharacter.IsValid())
+	{
 		BaseCharacter->LookUp(Value);
+	}
 }
 
 void AGCPlayerController::MoveForward(float Value)
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
 		BaseCharacter->MoveForward(Value);
+	}
 }
 
 void AGCPlayerController::MoveRight(float Value)
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
 		BaseCharacter->MoveRight(Value);
+	}
 }
 
 void AGCPlayerController::Turn(float Value)
 {
 	if (BaseCharacter.IsValid())
+	{
 		BaseCharacter->Turn(Value);
+	}
 }
 
 void AGCPlayerController::Mantle()
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
 		BaseCharacter->Mantle();
 	}
@@ -141,13 +153,15 @@ void AGCPlayerController::Mantle()
 
 void AGCPlayerController::Jump()
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
 		BaseCharacter->Jump();
+	}
 }
 
 void AGCPlayerController::StartSliding()
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
 		BaseCharacter->TryStartSliding();
 	}
@@ -164,13 +178,15 @@ void AGCPlayerController::StopSliding()
 
 void AGCPlayerController::ToggleCrouchState()
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
 		BaseCharacter->ToggleCrouchState();
+	}
 }
 
 void AGCPlayerController::ToggleProneState()
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
 		BaseCharacter->ToggleProneState();
 	}
@@ -178,19 +194,23 @@ void AGCPlayerController::ToggleProneState()
 
 void AGCPlayerController::StartSprint()
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
 		BaseCharacter->StartSprint();
+	}
 }
 
 void AGCPlayerController::StopSprint()
 {
 	if (BaseCharacter.IsValid())
+	{
 		BaseCharacter->StopSprint();
+	}
 }
 
 void AGCPlayerController::StartWallrun()
 {
-	if (BaseCharacter.IsValid())
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
 		BaseCharacter->StartWallrun();
 	}

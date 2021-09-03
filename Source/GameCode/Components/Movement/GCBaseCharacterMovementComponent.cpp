@@ -23,7 +23,7 @@ void UGCBaseCharacterMovementComponent::BeginPlay()
 	DefaultWalkSpeed = MaxWalkSpeed;
 	GCCharacter = Cast<AGCBaseCharacter>(CharacterOwner);
 	CharacterOwner->GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &UGCBaseCharacterMovementComponent::OnPlayerCapsuleHit);
-	PreparePostureHalfHeights();
+	InitPostureHalfHeights();
 }
 
 float UGCBaseCharacterMovementComponent::GetMaxSpeed() const
@@ -74,14 +74,12 @@ bool UGCBaseCharacterMovementComponent::TryStartSprint()
 	}
 	
 	bSprinting = true;
-	bForceMaxAccel = 1;
 	return true;
 }
 
 void UGCBaseCharacterMovementComponent::StopSprint()
 {
 	bSprinting = false;
-	bForceMaxAccel = 0;
 }
 
 void UGCBaseCharacterMovementComponent::SetIsOutOfStamina(bool bNewOutOfStamina)
@@ -130,11 +128,19 @@ void UGCBaseCharacterMovementComponent::OnMovementModeChanged(EMovementMode Prev
 		{
 			UnProne();
 		}
-		else if (PreviousMovementMode == MOVE_Custom && PreviousCustomMode == (uint8)EGCMovementMode::CMOVE_Slide)
+		else if (PreviousMovementMode == MOVE_Custom)
 		{
-			ResetFromSliding();
+			if (PreviousCustomMode == (uint8)EGCMovementMode::CMOVE_Slide)
+			{
+				ResetFromSliding();
+			}
+			else if (PreviousCustomMode == (uint8)EGCMovementMode::CMOVE_WallRun)
+			{
+				StopWallrunning(true);
+			}
 		}
 
+		bNotifyApex = true;
 		CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(SwimmingCapsuleRadius, SwimmingCapsuleHalfHeight);
 	}
 	else if (PreviousMovementMode == MOVE_Swimming)
@@ -420,6 +426,11 @@ bool UGCBaseCharacterMovementComponent::TryWakeUp(float DesiredUnscaledHalfHeigh
 	return true;
 }
 
+bool UGCBaseCharacterMovementComponent::CanApplyCustomRotation()
+{
+	return !CharacterOwner->bUseControllerRotationYaw;
+}
+
 bool UGCBaseCharacterMovementComponent::CanUnprone()
 {
 	return true;
@@ -462,7 +473,7 @@ bool UGCBaseCharacterMovementComponent::IsMantling() const
 		&& CustomMovementMode == (uint8)EGCMovementMode::CMOVE_Mantling;
 }
 
-#pragma endregion 
+#pragma endregion MANTLING
 
 #pragma region CLIMB
 
@@ -546,10 +557,14 @@ void UGCBaseCharacterMovementComponent::StopClimbing(EStopClimbingMethod StopCli
 					JumpDirection = -CurrentClimbable->GetActorForwardVector();
 				}
 				
-				Launch(JumpDirection * JumpOffClimbableSpeed + FVector(0, 0, 500));
-				ForceTargetRotation = JumpDirection.ToOrientationRotator();
-				bForceRotation = true;
 				SetMovementMode(MOVE_Falling);
+				Launch(JumpDirection * JumpOffClimbableSpeed + FVector(0, 0, 500));
+				if (CanApplyCustomRotation())
+				{
+					ForceTargetRotation = JumpDirection.ToOrientationRotator();
+					bForceRotation = true;	
+				}
+				
 				break;
 			}
 		case EStopClimbingMethod::Fall:
@@ -729,7 +744,7 @@ void UGCBaseCharacterMovementComponent::StopWallrunning(bool bResetTimer)
 	}
 	
 	WallrunEndEvent.ExecuteIfBound(WallrunData.Side);
-	SetMovementMode(MOVE_Walking);
+	SetMovementMode(GetMovementMode());
 }
 
 bool UGCBaseCharacterMovementComponent::IsWallrunning() const
@@ -788,7 +803,7 @@ void UGCBaseCharacterMovementComponent::StopSliding()
 	}
 
 	ResetFromSliding();
-	SetMovementMode(MOVE_Walking);
+	SetMovementMode(GetMovementMode());
 }
 
 void UGCBaseCharacterMovementComponent::ResetFromSliding()
@@ -982,8 +997,8 @@ void UGCBaseCharacterMovementComponent::PhysCustomWallRun(float DeltaTime, int32
 
 void UGCBaseCharacterMovementComponent::PhysCustomZiplining(float DeltaTime, int32 Iterations)
 {
-	const float g = -GetGravityZ();
-	ZiplineParams.CurrentSpeed = ZiplineParams.CurrentSpeed + DeltaTime * g *
+	const float G = -GetGravityZ();
+	ZiplineParams.CurrentSpeed = ZiplineParams.CurrentSpeed + DeltaTime * G *
 		(ZiplineParams.DeclinationAngleSin - ZiplineParams.Friction * ZiplineParams.DeclinationAngleCos);
 	GEngine->AddOnScreenDebugMessage(3, 3, FColor::Green,
 		FString::Printf(TEXT("Zipline unclamped speed: %f"), ZiplineParams.CurrentSpeed));
@@ -1012,7 +1027,7 @@ void UGCBaseCharacterMovementComponent::PhysCustomZiplining(float DeltaTime, int
 
 void UGCBaseCharacterMovementComponent::PhysCustomSliding(float DeltaTime, int32 Iterations)
 {
-	const float g = -GetGravityZ();
+	const float G = -GetGravityZ();
 	FHitResult FloorCheckHit;
 	FCollisionQueryParams FloorCheckCollisionQueryParams;
 	FloorCheckCollisionQueryParams.AddIgnoredActor(CharacterOwner);
@@ -1026,6 +1041,7 @@ void UGCBaseCharacterMovementComponent::PhysCustomSliding(float DeltaTime, int32
 	if (!bApplyGravity)
 	{
 		SlideData.VerticalSpeed = 0.f;
+		bNotifyApex = true;
 		if (FloorCheckHit.ImpactNormal != FVector::ZeroVector)
 		{
 			FVector ProjectedActorForwardVector = CharacterOwner->GetActorForwardVector();
@@ -1041,12 +1057,17 @@ void UGCBaseCharacterMovementComponent::PhysCustomSliding(float DeltaTime, int32
 	}
 	else
 	{
-		SlideData.VerticalSpeed -= g * DeltaTime;
+		SlideData.VerticalSpeed -= G * DeltaTime;
+		if (bNotifyApex && SlideData.VerticalSpeed)
+		{
+			bNotifyApex = false;
+			NotifyJumpApex();
+		}
 	}
 
 	const float DirectionFactor = bDescending ? 1.f : -1.f;
 	SlideData.Speed = SlideData.Speed
-		+ DeltaTime * g * (DirectionFactor * SlideData.FloorAngleSin - SlideSettings.DeccelerationRate * SlideData.FloorAngleCos);
+		+ DeltaTime * G * (DirectionFactor * SlideData.FloorAngleSin - SlideSettings.DeccelerationRate * SlideData.FloorAngleCos);
 	
 	if (SlideData.Speed < 0.f)
 	{
@@ -1081,14 +1102,9 @@ void UGCBaseCharacterMovementComponent::PhysCustomSliding(float DeltaTime, int32
 	}
 }
 
-bool UGCBaseCharacterMovementComponent::IsInCustomMovementMode(const EGCMovementMode& Mode) const
-{
-	return MovementMode == MOVE_Custom && CustomMovementMode == (uint8)Mode;
-}
-
 void UGCBaseCharacterMovementComponent::PhysicsRotation(float DeltaTime)
 {
-	if (bForceRotation)
+	if (bForceRotation && CanApplyCustomRotation())
 	{
 		FRotator CurrentRotation = UpdatedComponent->GetComponentRotation(); // Normalized
 		CurrentRotation.DiagnosticCheckNaN(TEXT("CharacterMovementComponent::PhysicsRotation(): CurrentRotation"));
@@ -1122,6 +1138,10 @@ void UGCBaseCharacterMovementComponent::PhysicsRotation(float DeltaTime)
 
 			// Set the new rotation.
 			DesiredRotation.DiagnosticCheckNaN(TEXT("CharacterMovementComponent::PhysicsRotation(): DesiredRotation"));
+			if (IsMovingOnGround())
+			{
+				UE_LOG(LogTemp, Log, TEXT("DR: %s, TR: %s"), *DesiredRotation.ToString(), *ForceTargetRotation.ToString());
+			}
 			MoveUpdatedComponent( FVector::ZeroVector, DesiredRotation,  false );
 		}
 		else
@@ -1142,7 +1162,7 @@ void UGCBaseCharacterMovementComponent::PhysicsRotation(float DeltaTime)
 
 #pragma region UTILS
 
-void UGCBaseCharacterMovementComponent::PreparePostureHalfHeights()
+void UGCBaseCharacterMovementComponent::InitPostureHalfHeights()
 {
 	const ACharacter* DefaultCharacter = CharacterOwner->GetClass()->GetDefaultObject<ACharacter>();
 	PostureCapsuleHalfHeights.Add(EPosture::Standing, DefaultCharacter->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight());
@@ -1152,6 +1172,11 @@ void UGCBaseCharacterMovementComponent::PreparePostureHalfHeights()
 	{
 		return A > B;
 	});
+}
+
+bool UGCBaseCharacterMovementComponent::IsInCustomMovementMode(const EGCMovementMode& Mode) const
+{
+	return MovementMode == MOVE_Custom && CustomMovementMode == (uint8)Mode;
 }
 
 UGCDebugSubsystem* UGCBaseCharacterMovementComponent::GetDebugSubsystem() const
@@ -1164,6 +1189,16 @@ UGCDebugSubsystem* UGCBaseCharacterMovementComponent::GetDebugSubsystem() const
 	return DebugSubsystem;
 }
 
+EMovementMode UGCBaseCharacterMovementComponent::GetMovementMode()
+{
+	FHitResult CheckFloorHit;
+	const FVector TraceStart = GetActorLocation() - FVector::UpVector * CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const float LineTraceExtend = 50.f;
+	const FVector TraceEnd = TraceStart - FVector::UpVector * LineTraceExtend;
+	FCollisionQueryParams CollisionQueryParams;
+	CollisionQueryParams.AddIgnoredActor(CharacterOwner);
+	bool bOnGround = GetWorld()->LineTraceSingleByChannel(CheckFloorHit, TraceStart, TraceEnd, ECC_Visibility, CollisionQueryParams);
+	return bOnGround ? EMovementMode::MOVE_Walking : EMovementMode::MOVE_Falling;
+}
+
 #pragma endregion UTILS
-
-

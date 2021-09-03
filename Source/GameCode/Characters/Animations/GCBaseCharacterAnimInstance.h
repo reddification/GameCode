@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Animation/AnimInstance.h"
-#include "GameCode/Data/GCMovementMode.h"
 #include "GameCode/Data/Side.h"
 #include "GCBaseCharacterAnimInstance.generated.h"
 
@@ -13,6 +12,7 @@ class GAMECODE_API UGCBaseCharacterAnimInstance : public UAnimInstance
 {
 	GENERATED_BODY()
 
+public:
 	virtual void NativeBeginPlay() override;
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 	
@@ -52,6 +52,12 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	uint8 bSliding:1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	uint8 bStrafing:1;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(UIMin = -180, UIMax = 180))
+	float Direction = 0.f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Transient, Category = "Character|IK")
 	FVector RightFootEffectorLocation = FVector::ZeroVector;
@@ -73,7 +79,7 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Transient, Category = "Character|IK")
 	FRotator RightFootRotator = FRotator::ZeroRotator;
-
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float ClimbingRatio = 0.0f;
 	

@@ -7,15 +7,11 @@ struct FSlideSettings
 {
 	GENERATED_BODY()
 
-	/*
-	* Max slide duration in seconds
-	*/
+	// Max slide duration in seconds
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0.5", UIMin="0.5"))
 	float Duration = 2.0f;
 
-	/*
-	* Rate at which character slows down when sliding. Surface friction is not considered (yet)
-	*/
+	// Rate at which character slows down when sliding. Surface friction is not considered (yet)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0.0", UIMin="0.0"))
 	float DeccelerationRate = 0.05f;
 
@@ -28,7 +24,7 @@ struct FSlideSettings
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float PitchInterpolationSpeed = 75.f;
 
-	/*Time between next slide attempt after previous finished*/
+	// Time between next slide attempt after previous finished
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin="0", UIMin="200"))
 	float CooldownTime = 0.5f;
 };

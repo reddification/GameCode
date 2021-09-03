@@ -17,10 +17,13 @@ class GAMECODE_API AGCPlayerController : public APlayerController
 
 public:
 	virtual void SetPawn(APawn* InPawn) override;
+
+	bool IsIgnoreCameraPitch() const { return bIgnoreCameraPitch; }
+	void SetIgnoreCameraPitch(bool newValue) { bIgnoreCameraPitch = newValue; }
 	
 protected:
 	virtual void SetupInputComponent() override;
-
+	
 private:
 	TSoftObjectPtr<class AGCBaseCharacter> BaseCharacter;
 	void StartSliding();
@@ -48,4 +51,6 @@ private:
 
 	void StartSprint();
 	void StopSprint();
+
+	bool bIgnoreCameraPitch;
 };

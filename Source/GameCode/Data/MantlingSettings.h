@@ -14,7 +14,10 @@ struct FMantlingSettings
 	GENERATED_BODY()
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	class UAnimMontage* MantleMontage;
+	class UAnimMontage* MantleMontageTP;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	class UAnimMontage* MantleMontageFP;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	class UCurveVector* MantleCurve;

@@ -11,6 +11,7 @@
 #include "GameCode/Components/InverseKinematicsComponent.h"
 #include "GameCode/Components/LedgeDetectionComponent.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
+#include "GameCode/Data/MontagePlayResult.h"
 #include "GameCode/Data/ZiplineParams.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -31,6 +32,10 @@ AGCBaseCharacter::AGCBaseCharacter(const FObjectInitializer& ObjectInitializer)
 	GCMovementComponent->CrouchedOrProned.BindUObject(this, &AGCBaseCharacter::OnStartCrouchOrProne);
 	GCMovementComponent->WokeUp.BindUObject(this, &AGCBaseCharacter::OnEndCrouchOrProne);
 	GCMovementComponent->ZiplineObstacleHit.BindUObject(this, &AGCBaseCharacter::OnZiplineObstacleHit);
+	GCMovementComponent->bNotifyApex = true;
+	
+	GetMesh()->CastShadow = true;
+	GetMesh()->bCastDynamicShadow = true;
 }
 
 // Called when the game starts or when spawned
@@ -38,6 +43,7 @@ void AGCBaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	CurrentStamina = MaxStamina;
+	MontageEndedUnlockControlsEvent.BindUObject(this, &AGCBaseCharacter::OnMontageEndedUnlockControls);
 }
 
 void AGCBaseCharacter::Tick(float DeltaTime)
@@ -199,6 +205,11 @@ void AGCBaseCharacter::Jump()
 	}
 	else
 	{
+		if (GCMovementComponent->IsSliding())
+		{
+			StopSliding();
+		}
+		
 		Super::Jump();
 	}
 }
@@ -223,6 +234,59 @@ void AGCBaseCharacter::Falling()
 		GCMovementComponent->StopSprint();
 		OnSprintEnd();
 	}
+}
+
+void AGCBaseCharacter::Landed(const FHitResult& Hit)
+{
+	Super::Landed(Hit);
+	GCMovementComponent->bNotifyApex = 1;
+	if (Hit.bBlockingHit && FallApexWorldZ - Hit.Location.Z > HardLandHeight)
+	{
+		const float SurfaceNormalZToStopSliding = 0.9f;
+		if (GCMovementComponent->IsSliding() && Hit.ImpactNormal.Z > SurfaceNormalZToStopSliding)
+		{
+			StopSliding(true);
+		}
+
+		FMontagePlayResult MontagePlayResult = PlayHardLandMontage();
+		if (MontagePlayResult.bStarted)
+		{
+			GCMovementComponent->Velocity = FVector::ZeroVector;
+			SetInputDisabled(true, MontagePlayResult.bDisableCameraRotation);
+			MontagePlayResult.AnimInstance->Montage_SetEndDelegate(MontageEndedUnlockControlsEvent, MontagePlayResult.AnimMontage);	
+		}
+	}
+}
+
+void AGCBaseCharacter::NotifyJumpApex()
+{
+	Super::NotifyJumpApex();
+	FallApexWorldZ = GetActorLocation().Z;
+}
+
+FMontagePlayResult AGCBaseCharacter::PlayHardLandMontage() const
+{
+	return PlayHardLandMontage(GetMesh()->GetAnimInstance(), HardLandMontageTP);
+}
+
+FMontagePlayResult AGCBaseCharacter::PlayHardLandMontage(UAnimInstance* AnimInstance, UAnimMontage* AnimMontage) const
+{
+	FMontagePlayResult MontagePlayResult;
+	MontagePlayResult.bStarted = false;
+	if (IsValid(AnimInstance))
+	{
+		if (IsValid(AnimMontage))
+		{
+			MontagePlayResult.bStarted = AnimInstance->Montage_Play(AnimMontage, 1, EMontagePlayReturnType::Duration, 0.f) > 0;
+			if (MontagePlayResult.bStarted)
+			{
+				MontagePlayResult.AnimInstance = AnimInstance;
+				MontagePlayResult.AnimMontage = AnimMontage;
+			}
+		}
+	}
+
+	return MontagePlayResult;
 }
 
 #pragma endregion JUMP/FALL
@@ -377,7 +441,7 @@ void AGCBaseCharacter::OnEndCrouchOrProne(float HalfHeightAdjust)
 {
 	RecalculateBaseEyeHeight();
 	FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
-	MeshRelativeLocation.Z -= HalfHeightAdjust;// GetDefault<AGCBaseCharacter>(GetClass())->GetMesh()->GetRelativeLocation().Z;
+	MeshRelativeLocation.Z -= HalfHeightAdjust;
 	BaseTranslationOffset.Z = MeshRelativeLocation.Z;
 }
 
@@ -464,9 +528,16 @@ void AGCBaseCharacter::Mantle(bool bForce)
 			UnCrouch();
 		}
 		
-		UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-		AnimInstance->Montage_Play(MantleSettings.MantleMontage, 1, EMontagePlayReturnType::Duration,
-			MantleParams.StartTime);
+		PlayMantleMontage(MantleSettings, MantleParams.StartTime);
+	}
+}
+
+void AGCBaseCharacter::PlayMantleMontage(const FMantlingSettings& MantleSettings, float StartTime)
+{
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (IsValid(AnimInstance) && IsValid(MantleSettings.MantleMontageTP))
+	{
+		AnimInstance->Montage_Play(MantleSettings.MantleMontageTP, 1, EMontagePlayReturnType::Duration, StartTime);
 	}
 }
 
@@ -480,7 +551,8 @@ bool AGCBaseCharacter::CanMantle() const
 	return !GCMovementComponent->IsMantling()
 		&& (GCMovementComponent->GetCurrentPosture() == EPosture::Standing
 			|| GCMovementComponent->GetCurrentPosture() == EPosture::Crouching)
-		&& !GCMovementComponent->IsWallrunning();
+		&& !GCMovementComponent->IsWallrunning()
+		&& IsValid(MantleHighSettings.MantleCurve) && IsValid(MantleLowSettings.MantleCurve);
 }
 
 #pragma endregion MANTLE
@@ -541,9 +613,9 @@ void AGCBaseCharacter::TryStartSliding()
 	}
 }
 
-void AGCBaseCharacter::StopSliding()
+void AGCBaseCharacter::StopSliding(bool bForce)
 {
-	if (GCMovementComponent->IsSliding())
+	if (bForce || GCMovementComponent->IsSliding())
 	{
 		GCMovementComponent->StopSliding();
 	}
@@ -555,4 +627,24 @@ void AGCBaseCharacter::MoveForward(float Value)
 {
 	CurrentInputForward = Value;
 	GCMovementComponent->SetForwardInput(Value);
+}
+
+void AGCBaseCharacter::SetInputDisabled(bool bDisabledMovement, bool bDisabledCamera)
+{
+	if (IsValid(Controller))
+	{
+		Controller->SetIgnoreLookInput(bDisabledCamera);
+		Controller->SetIgnoreMoveInput(bDisabledMovement);
+		bMovementInputEnabled = !bDisabledMovement;
+		if (bDisabledMovement)
+		{
+			CurrentInputForward = 0.f;
+			CurrentInputRight = 0.f;
+		}
+	}
+}
+
+void AGCBaseCharacter::OnMontageEndedUnlockControls(UAnimMontage* AnimMontage, bool bInterrupted)
+{
+	SetInputDisabled(false, false);
 }

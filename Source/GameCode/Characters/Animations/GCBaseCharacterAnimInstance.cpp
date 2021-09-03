@@ -38,7 +38,12 @@ void UGCBaseCharacterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	WallrunSide = MovementComponent->GetWallrunSide();
 	bZiplining = MovementComponent->IsZiplining();
 	bSliding = MovementComponent->IsSliding();
-	
+	bStrafing = !MovementComponent->bOrientRotationToMovement;
+	if (bStrafing)
+	{
+		Direction = CalculateDirection(MovementComponent->Velocity, Character->GetActorRotation());
+	}
+		
 	const auto& IkData = Character->InverseKinematicsComponent->GetIkData();
 	// constraining max foot elevation when crouching because it looks shitty with current animations
 	float AdjustedRightFootElevation = bCrouching && IkData.RightFootElevation > 0.f
