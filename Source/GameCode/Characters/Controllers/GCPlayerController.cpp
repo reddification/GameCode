@@ -3,6 +3,8 @@
 
 #include "GCPlayerController.h"
 
+#include "Components/CharacterAttributesComponent.h"
+#include "Components/CharacterEquipmentComponent.h"
 #include "GameCode/Characters/GCBaseCharacter.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
 
@@ -11,6 +13,22 @@ void AGCPlayerController::SetPawn(APawn* InPawn)
 	Super::SetPawn(InPawn);
 	// checkf(InPawn->IsA<AGCBaseCharacter>(), TEXT("GCPlayerController::SetPawn: Pawn is not AGCBaseCharacter"));
 	BaseCharacter = Cast<AGCBaseCharacter>(InPawn);
+	if (BaseCharacter.IsValid())
+	{
+		BaseCharacter->AimingStateChangedEvent.BindUObject(this, &AGCPlayerController::OnAimingStateChanged);
+		BaseCharacter->GetCharacterAttributesComponent()->HealthChangedEvent.AddUObject(this, &AGCPlayerController::OnHealthChanged);
+		BaseCharacter->GetEquipmentComponent()->WeaponAmmoChangedEvent.BindUObject(this, &AGCPlayerController::OnAmmoChanged);
+	}
+}
+
+void AGCPlayerController::BeginPlay()
+{
+	Super::BeginPlay();
+	if (IsValid(PlayerHUDWidgetClass))
+	{
+		PlayerHUDWidget = CreateWidget<UPlayerHUDWidget>(GetWorld(), PlayerHUDWidgetClass);
+		PlayerHUDWidget->AddToViewport();
+	}
 }
 
 void AGCPlayerController::SetupInputComponent()
@@ -44,10 +62,21 @@ void AGCPlayerController::SetupInputComponent()
 
 	InputComponent->BindAction("Wallrun", EInputEvent::IE_Pressed, this, &AGCPlayerController::StartWallrun);
 	InputComponent->BindAction("Wallrun", EInputEvent::IE_Released, this, &AGCPlayerController::StopWallrun);
-	
+
+	InputComponent->BindAction("Fire", EInputEvent::IE_Pressed, this, &AGCPlayerController::StartFiring);
+	InputComponent->BindAction("Fire", EInputEvent::IE_Released, this, &AGCPlayerController::StopFiring);
+
+	InputComponent->BindAction("Aim", EInputEvent::IE_Pressed, this, &AGCPlayerController::StartAiming);
+	InputComponent->BindAction("Aim", EInputEvent::IE_Released, this, &AGCPlayerController::StopAiming);
+
+	InputComponent->BindAction("Reload", EInputEvent::IE_Pressed, this, &AGCPlayerController::Reload);
+
+	InputComponent->BindAction("NextWeapon", EInputEvent::IE_Pressed, this, &AGCPlayerController::PickNextWeapon);
+	InputComponent->BindAction("PreviousWeapon", EInputEvent::IE_Pressed, this, &AGCPlayerController::PickPreviousWeapon);
+
 }
 
-void AGCPlayerController::Interact()
+void AGCPlayerController::Interact() 
 {
 	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
@@ -55,7 +84,7 @@ void AGCPlayerController::Interact()
 	}
 }
 
-void AGCPlayerController::ClimbDown(float Value)
+void AGCPlayerController::ClimbDown(float Value) 
 {
 	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
@@ -63,7 +92,7 @@ void AGCPlayerController::ClimbDown(float Value)
 	}
 }
 
-void AGCPlayerController::ClimbUp(float Value)
+void AGCPlayerController::ClimbUp(float Value) 
 {
 	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
@@ -71,7 +100,7 @@ void AGCPlayerController::ClimbUp(float Value)
 	}
 }
 
-void AGCPlayerController::SwimUp(float Value)
+void AGCPlayerController::SwimUp(float Value) 
 {
 	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
@@ -196,7 +225,7 @@ void AGCPlayerController::StartSprint()
 {
 	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
-		BaseCharacter->StartSprint();
+		BaseCharacter->StartRequestingSprint();
 	}
 }
 
@@ -204,7 +233,7 @@ void AGCPlayerController::StopSprint()
 {
 	if (BaseCharacter.IsValid())
 	{
-		BaseCharacter->StopSprint();
+		BaseCharacter->StopRequestingSprint();
 	}
 }
 
@@ -212,7 +241,7 @@ void AGCPlayerController::StartWallrun()
 {
 	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
-		BaseCharacter->StartWallrun();
+		BaseCharacter->StartRequestingWallrun();
 	}
 }
 
@@ -220,6 +249,86 @@ void AGCPlayerController::StopWallrun()
 {
 	if (BaseCharacter.IsValid())
 	{
-		BaseCharacter->StopWallrun();
+		BaseCharacter->StopRequestingWallrun();
+	}
+}
+
+void AGCPlayerController::StartFiring()
+{
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
+		BaseCharacter->StartFiring();		
+	}
+}
+
+void AGCPlayerController::StartAiming()
+{
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
+		BaseCharacter->StartAiming();		
+	}
+}
+
+void AGCPlayerController::StopAiming()
+{
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
+		BaseCharacter->StopAiming();		
+	}
+}
+
+void AGCPlayerController::Reload()
+{
+	if (BaseCharacter.IsValid())
+	{
+		BaseCharacter->StartReloading();
+	}
+}
+
+void AGCPlayerController::PickNextWeapon()
+{
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
+		BaseCharacter->PickWeapon(1);
+	}
+}
+
+void AGCPlayerController::PickPreviousWeapon()
+{
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
+		BaseCharacter->PickWeapon(-1);
+	}
+}
+
+void AGCPlayerController::OnHealthChanged(float HealthPercent) const
+{
+	if (IsValid(PlayerHUDWidget))
+	{
+		PlayerHUDWidget->SetHealth(HealthPercent);
+	}
+}
+
+void AGCPlayerController::StopFiring()
+{
+	if (BaseCharacter.IsValid())
+	{
+		BaseCharacter->StopFiring();
+	}
+}
+
+void AGCPlayerController::OnAimingStateChanged(bool bAiming)
+{
+	if (IsValid(PlayerHUDWidget))
+	{
+		PlayerHUDWidget->OnAimingStateChanged(bAiming);
+	}
+}
+
+void AGCPlayerController::OnAmmoChanged(int32 NewAmmo, int32 TotalAmmo)
+{
+	if (IsValid(PlayerHUDWidget))
+	{
+		PlayerHUDWidget->SetAmmo(NewAmmo, TotalAmmo);
 	}
 }

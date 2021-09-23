@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "GameCode/Actors/Interactive/InteractiveActor.h"
-#include "GameCode/Data/ZiplineParams.h"
 
 #include "Zipline.generated.h"
 

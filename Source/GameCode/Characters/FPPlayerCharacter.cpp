@@ -168,7 +168,7 @@ void AFPPlayerCharacter::PlayMantleMontage(const FMantlingSettings& MantleSettin
 	}
 }
 
-FMontagePlayResult AFPPlayerCharacter::PlayHardLandMontage() const
+FMontagePlayResult AFPPlayerCharacter::PlayHardLandMontage()
 {
 	Super::PlayHardLandMontage();
 	FMontagePlayResult Result = Super::PlayHardLandMontage(FirstPersonMeshComponent->GetAnimInstance(), HardLandMontageFP);

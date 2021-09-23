@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 
 #include "GameFramework/PlayerController.h"
+#include "UI/PlayerHUDWidget.h"
 #include "GCPlayerController.generated.h"
 
 /**
@@ -20,12 +21,21 @@ public:
 
 	bool IsIgnoreCameraPitch() const { return bIgnoreCameraPitch; }
 	void SetIgnoreCameraPitch(bool newValue) { bIgnoreCameraPitch = newValue; }
+
+	virtual void BeginPlay() override;
 	
 protected:
 	virtual void SetupInputComponent() override;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TSubclassOf<UPlayerHUDWidget> PlayerHUDWidgetClass;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	UPlayerHUDWidget* PlayerHUDWidget;
+	
 private:
 	TSoftObjectPtr<class AGCBaseCharacter> BaseCharacter;
+	
 	void StartSliding();
 	void StopSliding();
 	void StartWallrun();
@@ -52,5 +62,19 @@ private:
 	void StartSprint();
 	void StopSprint();
 
+	void StopFiring();
+	void StartFiring();
+	void StartAiming();
+	void StopAiming();
+	void Reload();
+
+	void PickNextWeapon();
+	void PickPreviousWeapon();
+	
+	void OnHealthChanged(float HealthPercent) const;
+	
 	bool bIgnoreCameraPitch;
+	void OnAimingStateChanged(bool bAiming);
+	void OnAmmoChanged(int32 NewAmmo, int32 TotalAmmo);
+
 };

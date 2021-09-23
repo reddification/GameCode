@@ -60,7 +60,7 @@ protected:
 	UAnimMontage* HardLandMontageFP = nullptr;
 	
 	virtual void PlayMantleMontage(const FMantlingSettings& MantleSettings, float StartTime) override;
-	virtual FMontagePlayResult PlayHardLandMontage() const override;
+	virtual FMontagePlayResult PlayHardLandMontage() override;
 	
 private:
 	FOnMontageEnded OnMontageEnded;

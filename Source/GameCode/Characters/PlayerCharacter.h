@@ -8,9 +8,6 @@
 
 #include "PlayerCharacter.generated.h"
 
-/**
- * 
- */
 UCLASS(Blueprintable)
 class GAMECODE_API APlayerCharacter : public AGCBaseCharacter
 {
@@ -43,32 +40,45 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	class USpringArmComponent* SpringArmComponent;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float SprintSpringArmOffsetDuration = 0.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float SprintSpringArmOffset = 420.f;
-
-	void SetSpringArmPosition(float alpha) const;
-
 	virtual void OnSprintStart_Implementation() override;
 	virtual void OnSprintEnd_Implementation() override;
 
 	virtual void OnStartCrouchOrProne(float HalfHeightAdjust) override;
 	virtual void OnEndCrouchOrProne(float HalfHeightAdjust) override;
-	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	virtual void OnSlidingStateChangedEvent(bool bSliding, float HalfHeightAdjust) override;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Character|Movement|Sprint")
+	float SprintSpringArmOffset = 420.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Character|Movement|Sprint")
 	UCurveFloat* SprintSpringArmTimelineCurve = nullptr;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Character|Aiming")
+	UCurveFloat* AimFovAdjustmentCurve = nullptr;
+
+	virtual void OnAimingStart_Implementation(float FOV, float NewTurnModifier, float NewLookUpModifier) override;
+	virtual void OnAimingEnd_Implementation() override;
+	
 private:
 	FTimeline SprintSpringArmTimeline;
-
+	FTimeline AimFovAdjustmentTimeline;
+	
 	float DefaultSpringArmOffset = 0.f;
 
-	void InitSprintSpringArm();
+	void InitTimeline(FTimeline& Timeline, UCurveFloat* Curve, void(APlayerCharacter::* Callback)(float) const);
 	void AdjustSpringArm(const FVector& Adjustment);
 	void AdjustSpringArmRelative(const FVector& Adjustment);
 	void OnWallrunBegin(ESide Side);
 	void OnWallrunEnd(ESide Side);
 	void OnWallrunChanged(ESide Side, int AdjustmentModification);
+	float DefaultFOV = 0.f;
+
+	float TurnModifier = 1.f;
+	float LookUpModifier = 1.f;
+	float AimingFOV = 0.f;
+
+	void SetAimFovPosition(float Alpha) const;
+	void SetSpringArmPosition(float Alpha) const;
+
+	TArray<FTimeline*> ActiveTimelines;
 };

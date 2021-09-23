@@ -67,6 +67,7 @@ void UInverseKinematicsComponent::RecalculateFeetElevationsWithPelvis()
 	}
 }
 
+// TODO just use surface normal you idiot
 void UInverseKinematicsComponent::RecalculateFeetPitches(const USkeletalMeshComponent* SkeletalMesh, float DeltaSeconds)
 {
 	const float PreviousRightFootPitch = IkData.RightFootPitch;

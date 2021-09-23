@@ -27,62 +27,60 @@ APlayerCharacter::APlayerCharacter(const FObjectInitializer& ObjectInitializer)
 	GetCharacterMovement()->bOrientRotationToMovement = 1;
 	GetCharacterMovement()->JumpZVelocity = 600.f;
 
-	SprintSpringArmTimelineCurve = CreateDefaultSubobject<UCurveFloat>(TEXT("Sprint SpringArm Curve"));
-	// TODO single curve for sprint and wallrun offset
-	const auto& timelineStart = SprintSpringArmTimelineCurve->FloatCurve.AddKey(0,0);
-	const auto& timelineEnd = SprintSpringArmTimelineCurve->FloatCurve.AddKey(SprintSpringArmOffsetDuration, 1);
-	SprintSpringArmTimelineCurve->FloatCurve.SetKeyInterpMode(timelineStart, ERichCurveInterpMode::RCIM_Cubic);
-	SprintSpringArmTimelineCurve->FloatCurve.SetKeyInterpMode(timelineEnd, ERichCurveInterpMode::RCIM_Cubic);
-	SprintSpringArmTimelineCurve->FloatCurve.BakeCurve(60.f);
-
 	DefaultSpringArmOffset = SpringArmComponent->TargetArmLength;
-}
-
-void APlayerCharacter::InitSprintSpringArm()
-{
-	if (IsValid(SprintSpringArmTimelineCurve))
-	{
-		FOnTimelineFloatStatic SprintSpringArmTimelineCallback;
-		SprintSpringArmTimelineCallback.BindUObject(this, &APlayerCharacter::SetSpringArmPosition);
-		SprintSpringArmTimeline.AddInterpFloat(SprintSpringArmTimelineCurve, SprintSpringArmTimelineCallback);
-	}
 }
 
 void APlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	InitSprintSpringArm();
-	GCMovementComponent->WallrunBeginEvent.BindUObject(this, &APlayerCharacter::OnWallrunBegin);
-	GCMovementComponent->WallrunEndEvent.BindUObject(this, &APlayerCharacter::OnWallrunEnd);
+	DefaultFOV = CameraComponent->FieldOfView;
+	InitTimeline(SprintSpringArmTimeline, SprintSpringArmTimelineCurve, &APlayerCharacter::SetSpringArmPosition);
+	InitTimeline(AimFovAdjustmentTimeline, AimFovAdjustmentCurve, &APlayerCharacter::SetAimFovPosition);
+	GCMovementComponent->WallrunBeginEvent.AddUObject(this, &APlayerCharacter::OnWallrunBegin);
+	GCMovementComponent->WallrunEndEvent.AddUObject(this, &APlayerCharacter::OnWallrunEnd);
 }
 
 void APlayerCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (SprintSpringArmTimeline.IsPlaying())
+	for (FTimeline* ActiveTimeline : ActiveTimelines)
 	{
-		SprintSpringArmTimeline.TickTimeline(DeltaSeconds);		
+		if (ActiveTimeline->IsPlaying() || ActiveTimeline->IsReversing())
+		{
+			ActiveTimeline->TickTimeline(DeltaSeconds);
+		}
+	}
+}
+
+void APlayerCharacter::InitTimeline(FTimeline& Timeline, UCurveFloat* Curve, void(APlayerCharacter::* Callback)(float) const)
+{
+	if (IsValid(Curve))
+	{
+		FOnTimelineFloatStatic TimelineCallback;
+		TimelineCallback.BindUObject(this, Callback);
+		Timeline.AddInterpFloat(Curve, TimelineCallback);
+		ActiveTimelines.Add(&Timeline);
 	}
 }
 
 void APlayerCharacter::LookUp(float Value)
 {
-	AddControllerPitchInput(Value);	
+	AddControllerPitchInput(Value * LookUpModifier);	
 }
 
 void APlayerCharacter::Turn(float Value)
 {
-	AddControllerYawInput(Value);	
+	AddControllerYawInput(Value * TurnModifier);	
 }
 
 void APlayerCharacter::LookUpAtRate(float Value)
 {
-	AddControllerPitchInput(Value * BaseLookUpRate * GetWorld()->GetDeltaSeconds());
+	AddControllerPitchInput(Value * BaseLookUpRate * LookUpModifier * GetWorld()->GetDeltaSeconds());
 }
 
 void APlayerCharacter::TurnAtRate(float Value)
 {
-	AddControllerPitchInput(Value * BaseTurnRate * GetWorld()->GetDeltaSeconds() );
+	AddControllerPitchInput(Value * BaseTurnRate * TurnModifier * GetWorld()->GetDeltaSeconds() );
 }
 
 void APlayerCharacter::MoveForward(float Value)
@@ -203,22 +201,25 @@ void APlayerCharacter::OnJumped_Implementation()
 {
 	Super::OnJumped_Implementation();
 	if (bIsCrouched)
+	{
 		UnCrouch();
-}
-
-void APlayerCharacter::SetSpringArmPosition(float alpha) const
-{
-	SpringArmComponent->TargetArmLength = FMath::Lerp(DefaultSpringArmOffset, SprintSpringArmOffset, alpha);
+	}
 }
 
 void APlayerCharacter::OnSprintStart_Implementation()
 {
-	SprintSpringArmTimeline.Play();
+	if (IsValid(SprintSpringArmTimelineCurve))
+	{
+		SprintSpringArmTimeline.Play();
+	}
 }
 
 void APlayerCharacter::OnSprintEnd_Implementation()
 {
-	SprintSpringArmTimeline.Reverse();	
+	if (IsValid(SprintSpringArmTimelineCurve))
+	{
+		SprintSpringArmTimeline.Reverse();
+	}
 }
 
 void APlayerCharacter::OnStartCrouchOrProne(float HalfHeightAdjust)
@@ -259,4 +260,51 @@ void APlayerCharacter::OnWallrunChanged(ESide Side, int AdjustmentModification)
 
 	// TODO timeline curve
 	AdjustSpringArmRelative(FVector(0, AdjustmentModification * CameraPositionAdjustment, 0));
+}
+
+void APlayerCharacter::OnSlidingStateChangedEvent(bool bSliding, float HalfHeightAdjust)
+{
+	Super::OnSlidingStateChangedEvent(bSliding, HalfHeightAdjust);
+	AdjustSpringArm(FVector(0, 0, bSliding ? HalfHeightAdjust : -HalfHeightAdjust));
+}
+
+void APlayerCharacter::OnAimingStart_Implementation(float FOV, float NewTurnModifier, float NewLookUpModifier)
+{
+	Super::OnAimingStart_Implementation(FOV, NewTurnModifier, NewLookUpModifier);
+	TurnModifier = NewTurnModifier;
+	LookUpModifier = NewLookUpModifier;
+	if (IsValid(AimFovAdjustmentCurve))
+	{
+		AimFovAdjustmentTimeline.Play();
+		AimingFOV = FOV;
+	}
+	else
+	{
+		CameraComponent->SetFieldOfView(FOV);
+	}
+}
+
+void APlayerCharacter::OnAimingEnd_Implementation()
+{
+	Super::OnAimingEnd_Implementation();
+	TurnModifier = 1.f;
+	LookUpModifier = 1.f;
+	if (IsValid(AimFovAdjustmentCurve))
+	{
+		AimFovAdjustmentTimeline.Reverse();
+	}
+	else
+	{
+		CameraComponent->SetFieldOfView(DefaultFOV);
+	}
+}
+
+void APlayerCharacter::SetSpringArmPosition(float Alpha) const
+{
+	SpringArmComponent->TargetArmLength = FMath::Lerp(DefaultSpringArmOffset, SprintSpringArmOffset, Alpha);
+}
+
+void APlayerCharacter::SetAimFovPosition(float Alpha) const
+{
+	CameraComponent->SetFieldOfView(FMath::Lerp(DefaultFOV, AimingFOV, Alpha));
 }

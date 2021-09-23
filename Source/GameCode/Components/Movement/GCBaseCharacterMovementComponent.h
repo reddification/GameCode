@@ -3,18 +3,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameCode/Data/GCMovementMode.h"
+#include "Data/Movement/Posture.h"
+#include "GameCode/Data/Movement/GCMovementMode.h"
 
-#include "GameCode/Data/MantlingMovementParameters.h"
-#include "GameCode/Data/Posture.h"
+#include "GameCode/Data/Movement/MantlingMovementParameters.h"
 #include "GameCode/Data/Side.h"
-#include "GameCode/Data/SlideData.h"
-#include "GameCode/Data/SlideSettings.h"
-#include "GameCode/Data/StopClimbingMethod.h"
-#include "GameCode/Data/WakeUpParams.h"
-#include "GameCode/Data/WallrunData.h"
-#include "GameCode/Data/WallrunSettings.h"
-#include "GameCode/Data/ZiplineParams.h"
+#include "GameCode/Data/Movement/SlideData.h"
+#include "GameCode/Data/Movement/SlideSettings.h"
+#include "GameCode/Data/Movement/StopClimbingMethod.h"
+#include "GameCode/Data/Movement/WakeUpParams.h"
+#include "GameCode/Data/Movement/WallrunData.h"
+#include "GameCode/Data/Movement/WallrunSettings.h"
+#include "GameCode/Data/Movement/ZiplineParams.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GCBaseCharacterMovementComponent.generated.h"
 
@@ -22,9 +22,10 @@ DECLARE_DELEGATE_OneParam(FCrouchedOrProned, float HalfHeightAdjust)
 DECLARE_DELEGATE_OneParam(FWokeUp, float HalfHeightAdjust)
 DECLARE_DELEGATE(FClimbableTopReached)
 DECLARE_DELEGATE_OneParam(FStoppedClimbing, const class AInteractiveActor* Interactable)
-DECLARE_DELEGATE_OneParam(FWallrunBegin, const ESide WallrunSide)
-DECLARE_DELEGATE_OneParam(FWallrunEnd, const ESide WallrunSide)
+DECLARE_MULTICAST_DELEGATE_OneParam(FWallrunBegin, const ESide WallrunSide)
+DECLARE_MULTICAST_DELEGATE_OneParam(FWallrunEnd, const ESide WallrunSide)
 DECLARE_DELEGATE_OneParam(FZiplineObstacleHit, FHitResult Hit);
+DECLARE_DELEGATE_TwoParams(FSlidingStateChangedEvent, bool bSliding, float HalfHeightAdjust)
 class ALadder;
 
 UCLASS()
@@ -40,10 +41,10 @@ public:
 	virtual bool CanAttemptJump() const override { return Super::CanAttemptJump() || IsSliding(); }
 	bool TryStartSprint();
 	void StopSprint(); 
-	bool IsSprinting() const { return IsMovingOnGround() && bSprinting;}
+	bool IsSprinting() const { return bSprinting; }
 
-	bool IsOutOfStamina() const { return bOutOfStamina; } 
 	void SetIsOutOfStamina(bool bNewOutOfStamina);
+	void SetIsAiming(bool bNewState) { bAiming = bNewState; }
 
 #pragma region CROUCH/PRONE
 	
@@ -56,9 +57,11 @@ public:
 	void TryCrouch();
 	virtual void Crouch(bool bClientSimulation = false) override;
 	virtual void UnCrouch(bool bClientSimulation = false) override;
+	void SetAimingSpeed(float AimMaxSpeed) {CurrentAimSpeed = AimMaxSpeed; }
 
 	FCrouchedOrProned CrouchedOrProned;
 	FWokeUp WokeUp;
+	FSlidingStateChangedEvent SlidingStateChangedEvent;
 
 #pragma endregion CROUCH/PRONE
 
@@ -132,7 +135,7 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement|Zipline")
 	float MaxZiplineSpeed = 1600.0f;
-	
+
 #pragma endregion SPEED UPROPERTIES
 
 #pragma region CAPSULE
@@ -157,7 +160,7 @@ protected:
 	float MaxClimbingSpeed = 200.f;
 
 	UPROPERTY(Category="Character Movement|Climbing", EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0", UIMin="0"))
-	float ClimbingBrakingDeceleration = 2048.0f;
+	float ClimbingBrakingDeceleration = 4096.0f;
 	
 	UPROPERTY(Category="Character Movement|Climbing", EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0", UIMin="0"))
 	float ClimbingOffset = 60.f;
@@ -173,7 +176,6 @@ protected:
 
 #pragma endregion 
 
-	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FWallrunSettings WallrunSettings;
 	
@@ -187,20 +189,22 @@ private:
 	EPosture CurrentPosture = EPosture::Standing;
 	float CurrentForwardInput = 0.f;
 	float DefaultWalkSpeed = 0.f;
-
+	float CurrentAimSpeed = 0.f;
+	
 	bool bSprinting = false;
 	bool bOutOfStamina = false;
 	bool bWantsToProne = false;
-
+	bool bAiming = false;
+	
 	void Prone();
 	void UnProne();
 	bool CanUnprone();
 	bool CanProne();
 	
-	bool TryCrouchOrProne(float NewCapsuleHalfHeight, float NewCapsuleRadius);
+	bool TryCrouchOrProne(float NewCapsuleHalfHeight, float NewCapsuleRadius, float& ScaledHalfHeightAdjust);
 	void FillWakeUpParams(FWakeUpParams& WakeUpParams) const;
 	bool TryWakeUpToState(EPosture DesiredPosture, bool bClientSimulation = false);
-	bool TryWakeUp(float DesiredHalfHeight, const FWakeUpParams& WakeUpParams, bool bClientSimulation = false);
+	bool TryWakeUp(float DesiredHalfHeight, const FWakeUpParams& WakeUpParams, float& ScaledHalfHeightAdjust, bool bClientSimulation = false);
 
 	bool CanApplyCustomRotation();
 	

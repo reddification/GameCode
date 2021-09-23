@@ -4,16 +4,24 @@
 #include "GCBaseCharacter.h"
 
 #include "DrawDebugHelpers.h"
+#include "Actors/Equipment/Weapons/RangeWeaponItem.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/CharacterEquipmentComponent.h"
+#include "Data/Movement/MantlingMovementParameters.h"
+#include "Data/Movement/Posture.h"
+#include "Data/Movement/StopClimbingMethod.h"
+#include "GameCode/GameCode.h"
 #include "GameCode/Actors/Interactive/InteractiveActor.h"
 #include "GameCode/Actors/Interactive/Environment/Ladder.h"
 #include "GameCode/Actors/Interactive/Environment/Zipline.h"
+#include "GameCode/Components/CharacterAttributesComponent.h"
 #include "GameCode/Components/InverseKinematicsComponent.h"
 #include "GameCode/Components/LedgeDetectionComponent.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
 #include "GameCode/Data/MontagePlayResult.h"
-#include "GameCode/Data/ZiplineParams.h"
+#include "GameCode/Data/Movement/ZiplineParams.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PhysicsVolume.h"
 #include "Kismet/KismetSystemLibrary.h"
 
 AGCBaseCharacter::AGCBaseCharacter(const FObjectInitializer& ObjectInitializer)
@@ -27,29 +35,48 @@ AGCBaseCharacter::AGCBaseCharacter(const FObjectInitializer& ObjectInitializer)
 	LedgeDetectionComponent = CreateDefaultSubobject<ULedgeDetectionComponent>(TEXT("LedgeDetection"));
 	AddOwnedComponent(LedgeDetectionComponent);
 
-	GCMovementComponent->ClimbableTopReached.BindUObject(this, &AGCBaseCharacter::OnClimbableTopReached);
-	GCMovementComponent->StoppedClimbing.BindUObject(this, &AGCBaseCharacter::OnStoppedClimbing);
-	GCMovementComponent->CrouchedOrProned.BindUObject(this, &AGCBaseCharacter::OnStartCrouchOrProne);
-	GCMovementComponent->WokeUp.BindUObject(this, &AGCBaseCharacter::OnEndCrouchOrProne);
-	GCMovementComponent->ZiplineObstacleHit.BindUObject(this, &AGCBaseCharacter::OnZiplineObstacleHit);
-	GCMovementComponent->bNotifyApex = true;
+	CharacterAttributesComponent = CreateDefaultSubobject<UCharacterAttributesComponent>(TEXT("Attributes"));
+	AddOwnedComponent(CharacterAttributesComponent);
+
+	CharacterEquipmentComponent = CreateDefaultSubobject<UCharacterEquipmentComponent>(TEXT("Equipment"));
+	AddOwnedComponent(CharacterEquipmentComponent);
 	
+	GCMovementComponent->bNotifyApex = true;
+
 	GetMesh()->CastShadow = true;
 	GetMesh()->bCastDynamicShadow = true;
 }
 
-// Called when the game starts or when spawned
 void AGCBaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	CurrentStamina = MaxStamina;
+	GCMovementComponent->ClimbableTopReached.BindUObject(this, &AGCBaseCharacter::OnClimbableTopReached);
+	GCMovementComponent->StoppedClimbing.BindUObject(this, &AGCBaseCharacter::OnStoppedClimbing);
+	GCMovementComponent->CrouchedOrProned.BindUObject(this, &AGCBaseCharacter::OnStartCrouchOrProne);
+	GCMovementComponent->WokeUp.BindUObject(this, &AGCBaseCharacter::OnEndCrouchOrProne);
+	GCMovementComponent->SlidingStateChangedEvent.BindUObject(this, &AGCBaseCharacter::OnSlidingStateChangedEvent);
+	GCMovementComponent->ZiplineObstacleHit.BindUObject(this, &AGCBaseCharacter::OnZiplineObstacleHit);
+	GCMovementComponent->WallrunBeginEvent.AddUObject(this, &AGCBaseCharacter::OnWallrunBegin);
+	GCMovementComponent->WallrunEndEvent.AddUObject(this, &AGCBaseCharacter::OnWallrunEnd);
+	
 	MontageEndedUnlockControlsEvent.BindUObject(this, &AGCBaseCharacter::OnMontageEndedUnlockControls);
+
+	CharacterAttributesComponent->OutOfHealthEvent.AddUObject(this, &AGCBaseCharacter::OnOutOfHealth);
+	CharacterAttributesComponent->OutOfStaminaEvent.AddUObject(this, &AGCBaseCharacter::OnOutOfStamina);
+
+	CharacterEquipmentComponent->WeaponEquippedChangedEvent.BindUObject(this, &AGCBaseCharacter::OnWeaponEquippedChanged);
+	CharacterEquipmentComponent->WeaponPickedUpEvent.BindUObject(this, &AGCBaseCharacter::OnWeaponPickedUpChanged);
+	CharacterEquipmentComponent->ChangingEquippedItemStarted.BindUObject(this, &AGCBaseCharacter::OnChangingEquippedItemStarted);
+	
+	OnTakeAnyDamage.AddDynamic(CharacterAttributesComponent, &UCharacterAttributesComponent::OnTakeAnyDamage);
+	
+	CharacterEquipmentComponent->CreateLoadout();
+	UpdateStrafingControls();
 }
 
 void AGCBaseCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	UpdateStamina(DeltaTime);
 	TryChangeSprintState();
 	const EPosture CurrentPosture = GCMovementComponent->GetCurrentPosture();
 	if (GCMovementComponent->IsMovingOnGround() && (CurrentPosture == EPosture::Standing || CurrentPosture == EPosture::Crouching))
@@ -57,83 +84,68 @@ void AGCBaseCharacter::Tick(float DeltaTime)
 		InverseKinematicsComponent->CalculateIkData(GetMesh(), GetCapsuleComponent()->GetScaledCapsuleHalfHeight(),
 			GetActorLocation(), bIsCrouched, DeltaTime);
 	}
+
+	UpdateSuffocatingState();
 }
 
-#pragma region STAMINA
+#pragma region ATTRIBUTES
 
-void AGCBaseCharacter::UpdateStamina(float DeltaTime)
+void AGCBaseCharacter::OnOutOfHealth()
 {
-	const float CurrentStaminaConsumption = GetCurrentStaminaConsumption(DeltaTime);
-	if (CurrentStaminaConsumption > 0.f)
+	bool bDeathMontagePlaying = false;
+	InterruptReloading();
+	StopAnimMontage();
+	if (GCMovementComponent->IsMovingOnGround())
 	{
-		ChangeStaminaValue(-CurrentStaminaConsumption * DeltaTime);
+		const float Duration = PlayAnimMontage(DeathAnimationMontage);
+		bDeathMontagePlaying = Duration > 0.f;
 	}
-	else if (CanRestoreStamina())
+
+	GCMovementComponent->DisableMovement();
+	SetInputDisabled(true, true);
+	if (!bDeathMontagePlaying)
 	{
-		ChangeStaminaValue(StaminaRestoreVelocity * DeltaTime);
+		EnableRagdoll();
 	}
 }
 
-float AGCBaseCharacter::GetCurrentStaminaConsumption(float DeltaTime) const
+void AGCBaseCharacter::UpdateSuffocatingState()
 {
-	if (GCMovementComponent->IsSprinting())
+	if (GCMovementComponent->IsSwimming())
 	{
-		return SprintStaminaConsumptionRate;
+		FVector HeadPosition = GetMesh()->GetBoneLocation(HeadBoneName);
+		APhysicsVolume* Volume = GCMovementComponent->GetPhysicsVolume();
+		if (IsValid(Volume))
+		{
+			float WaterPlaneZ = Volume->GetActorLocation().Z + Volume->GetBounds().BoxExtent.Z * Volume->GetActorScale3D().Z;
+			CharacterAttributesComponent->SetSuffocating(HeadPosition.Z < WaterPlaneZ);
+		}
 	}
-	else if (GCMovementComponent->IsWallrunning())
-	{
-		return SprintStaminaConsumptionRate;
-	}
-	
-	return 0.f;
 }
 
-void AGCBaseCharacter::ChangeStaminaValue(float StaminaModification)
+void AGCBaseCharacter::OnOutOfStamina(bool bOutOfStamina)
 {
-	CurrentStamina = FMath::Clamp(CurrentStamina + StaminaModification, 0.f, MaxStamina);
-
-	if (CurrentStamina == 0.f && !GCMovementComponent->IsOutOfStamina())
+	if (bOutOfStamina)
 	{
-		// TODO refactor so that all 3 stprint stoppage occur in a single method
 		if (GCMovementComponent->IsSprinting())
 		{
-			StopSprint();
-			OnSprintEnd();
+			StopSprinting();
+			SetStrafingControlsState(false);
 		}
 		else if (GCMovementComponent->IsWallrunning())
 		{
-			GCMovementComponent->StopWallrunning(false);
+			StopWallrunning();
 		}
-		GCMovementComponent->SetIsOutOfStamina(true);
 	}
-	else if (CurrentStamina == MaxStamina && GCMovementComponent->IsOutOfStamina())
-	{
-		GCMovementComponent->SetIsOutOfStamina(false);
-	}
-
-#ifdef UE_BUILD_DEBUG
-	const FColor LogColor = FLinearColor::LerpUsingHSV( FLinearColor::Red, FLinearColor::Yellow,
-		CurrentStamina / MaxStamina).ToFColor(false);
-	GEngine->AddOnScreenDebugMessage(1, 1.0f, LogColor, FString::Printf(TEXT("Stamina: %.2f"),
-		CurrentStamina));
-#endif
+	
+	GCMovementComponent->SetIsOutOfStamina(bOutOfStamina);
 }
 
-bool AGCBaseCharacter::CanRestoreStamina() const
-{
-	return !GCMovementComponent->IsFalling() && !IsConsumingStamina();
-}
-
-bool AGCBaseCharacter::IsConsumingStamina() const
-{
-	return !GCMovementComponent->IsMovingOnGround() || GCMovementComponent->IsSprinting();
-}
-
-#pragma endregion STAMINA
+#pragma endregion ATTRIBUTES
 
 #pragma region SPRINT
 
-void AGCBaseCharacter::StartSprint()
+void AGCBaseCharacter::StartRequestingSprint()
 {
 	bSprintRequested = true;
 	if (bIsCrouched)
@@ -142,7 +154,7 @@ void AGCBaseCharacter::StartSprint()
 	}
 }
 
-void AGCBaseCharacter::StopSprint()
+void AGCBaseCharacter::StopRequestingSprint()
 {
 	bSprintRequested = false;
 }
@@ -150,30 +162,50 @@ void AGCBaseCharacter::StopSprint()
 bool AGCBaseCharacter::CanSprint() const
 {
 	return IsPendingMovement()
-		&& GCMovementComponent->IsMovingOnGround() && !GCMovementComponent->IsOutOfStamina()
+		&& !bAiming
+		&& GCMovementComponent->IsMovingOnGround() && !CharacterAttributesComponent->IsOutOfStamina()
 		&& GCMovementComponent->GetCurrentPosture() != EPosture::Proning;
+}
+
+void AGCBaseCharacter::TryStartSprinting()
+{
+	bool bSprintStarted = GCMovementComponent->TryStartSprint();
+	if (bSprintStarted && CharacterEquipmentComponent->GetEquippedItemType() != EEquippableItemType::None)
+	{
+		SetStrafingControlsState(false);
+	}
+	
+	CharacterAttributesComponent->SetSprinting(bSprintStarted);
+	OnSprintStart();
+}
+
+void AGCBaseCharacter::StopSprinting()
+{
+	if (!GCMovementComponent->IsSprinting())
+	{
+		return;
+	}
+	
+	GCMovementComponent->StopSprint();
+	if (GCMovementComponent->IsMovingOnGround() && CharacterEquipmentComponent->IsPreferStrafing())
+	{
+		SetStrafingControlsState(true);
+	}
+	
+	CharacterAttributesComponent->SetSprinting(false);
+	OnSprintEnd();
 }
 
 void AGCBaseCharacter::TryChangeSprintState()
 {
 	if (bSprintRequested && !GCMovementComponent->IsSprinting() && CanSprint())
 	{
-		GCMovementComponent->TryStartSprint();
-		OnSprintStart();
+		TryStartSprinting();
 	}
-	else if ((!bSprintRequested || !IsPendingMovement()) && GCMovementComponent->IsSprinting())
+	else if ((!bSprintRequested || !CanSprint()) && GCMovementComponent->IsSprinting())
 	{
-		GCMovementComponent->StopSprint();
-		OnSprintEnd();
+		StopSprinting();
 	}
-}
-
-void AGCBaseCharacter::OnSprintEnd_Implementation()
-{
-}
-
-void AGCBaseCharacter::OnSprintStart_Implementation()
-{
 }
 
 #pragma endregion 
@@ -201,7 +233,6 @@ void AGCBaseCharacter::Jump()
 	else if (GCMovementComponent->IsWallrunning())
 	{
 		GCMovementComponent->JumpOffWall();
-		ChangeStaminaValue(JumpStaminaConsumption);
 	}
 	else
 	{
@@ -216,13 +247,13 @@ void AGCBaseCharacter::Jump()
 
 void AGCBaseCharacter::OnJumped_Implementation()
 {
-	ChangeStaminaValue(-JumpStaminaConsumption);
+	CharacterAttributesComponent->OnJumped();
 }
 
 bool AGCBaseCharacter::CanJumpInternal_Implementation() const
 {
 	return Super::CanJumpInternal_Implementation()
-		&& !GCMovementComponent->IsOutOfStamina()
+		&& !CharacterAttributesComponent->IsOutOfStamina()
 		&& !GCMovementComponent->IsMantling()
 		&& !GCMovementComponent->IsProning();
 }
@@ -231,16 +262,19 @@ void AGCBaseCharacter::Falling()
 {
 	if (GCMovementComponent->IsSprinting())
 	{
-		GCMovementComponent->StopSprint();
-		OnSprintEnd();
+		StopSprinting();
 	}
+
+	CharacterAttributesComponent->SetFalling(true);
 }
 
 void AGCBaseCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
 	GCMovementComponent->bNotifyApex = 1;
-	if (Hit.bBlockingHit && FallApexWorldZ - Hit.Location.Z > HardLandHeight)
+	const FVector Velocity = GCMovementComponent->Velocity;
+
+	if (Hit.bBlockingHit && -Velocity.Z > HardLandVelocityZ)
 	{
 		const float SurfaceNormalZToStopSliding = 0.9f;
 		if (GCMovementComponent->IsSliding() && Hit.ImpactNormal.Z > SurfaceNormalZToStopSliding)
@@ -256,6 +290,17 @@ void AGCBaseCharacter::Landed(const FHitResult& Hit)
 			MontagePlayResult.AnimInstance->Montage_SetEndDelegate(MontageEndedUnlockControlsEvent, MontagePlayResult.AnimMontage);	
 		}
 	}
+
+	if (IsValid(FallDamageCurve))
+	{
+		float FallDamage = FallDamageCurve->GetFloatValue(-Velocity.Z);
+		if (FallDamage > 0.f)
+		{
+			TakeDamage(FallDamage, FDamageEvent(), GetController(), Hit.Actor.Get());
+		}
+	}
+	
+	CharacterAttributesComponent->SetFalling(false);
 }
 
 void AGCBaseCharacter::NotifyJumpApex()
@@ -264,8 +309,9 @@ void AGCBaseCharacter::NotifyJumpApex()
 	FallApexWorldZ = GetActorLocation().Z;
 }
 
-FMontagePlayResult AGCBaseCharacter::PlayHardLandMontage() const
+FMontagePlayResult AGCBaseCharacter::PlayHardLandMontage()
 {
+	InterruptReloading();
 	return PlayHardLandMontage(GetMesh()->GetAnimInstance(), HardLandMontageTP);
 }
 
@@ -302,6 +348,10 @@ void AGCBaseCharacter::Interact()
 	else
 	{
 		TryStartInteracting();
+		if (bInteracting)
+		{
+			InterruptReloading();
+		}
 	}
 }
 
@@ -325,12 +375,12 @@ void AGCBaseCharacter::TryStopInteracting()
 }
 
 // TODO InteractionComponent
-void AGCBaseCharacter::TryStartInteracting()
+bool AGCBaseCharacter::TryStartInteracting()
 {
 	const AInteractiveActor* Interactable = GetPreferableInteractable();
 	if (!IsValid(Interactable))
 	{
-		return;
+		return false;
 	}
 
 	bool bInteractionStarted = false;
@@ -339,6 +389,7 @@ void AGCBaseCharacter::TryStartInteracting()
 		case EInteractionType::Climbing:
 		{
 			const ALadder* Ladder = StaticCast<const ALadder*>(Interactable);
+
 			if (Ladder->IsOnTop())
 			{
 				PlayAnimMontage(Ladder->GetAttachFromTopAnimMontage());
@@ -363,6 +414,8 @@ void AGCBaseCharacter::TryStartInteracting()
 		bInteracting = true;
 		CurrentInteractable = Interactable;	
 	}
+
+	return bInteractionStarted;
 }
 
 void AGCBaseCharacter::RegisterInteractiveActor(const AInteractiveActor* InteractiveActor)
@@ -431,18 +484,14 @@ bool AGCBaseCharacter::CanCrouch() const
 
 void AGCBaseCharacter::OnStartCrouchOrProne(float HalfHeightAdjust)
 {
-	RecalculateBaseEyeHeight();
-	FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
-	MeshRelativeLocation.Z += HalfHeightAdjust;
-	BaseTranslationOffset.Z = MeshRelativeLocation.Z;
+	UpdateStrafingControls();
+	ChangeMeshOffset(HalfHeightAdjust);
 }
 
 void AGCBaseCharacter::OnEndCrouchOrProne(float HalfHeightAdjust)
 {
-	RecalculateBaseEyeHeight();
-	FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
-	MeshRelativeLocation.Z -= HalfHeightAdjust;
-	BaseTranslationOffset.Z = MeshRelativeLocation.Z;
+	UpdateStrafingControls();
+	ChangeMeshOffset(-HalfHeightAdjust);
 }
 
 #pragma endregion CROUCH/PRONE
@@ -522,6 +571,10 @@ void AGCBaseCharacter::Mantle(bool bForce)
 		{
 			return;
 		}
+		else
+		{
+			InterruptReloading();
+		}
 		
 		if (bIsCrouched)
 		{
@@ -562,9 +615,8 @@ bool AGCBaseCharacter::CanMantle() const
 void AGCBaseCharacter::OnClimbableTopReached()
 {
 	Mantle(true);
-	bInteracting = false;
 	InteractiveActors.RemoveSingleSwap(CurrentInteractable);
-	CurrentInteractable = nullptr;
+	ResetInteraction();
 }
 
 void AGCBaseCharacter::OnStoppedClimbing(const AInteractiveActor* Interactable)
@@ -580,15 +632,15 @@ void AGCBaseCharacter::OnStoppedClimbing(const AInteractiveActor* Interactable)
 
 #pragma region WALLRUN
 
-void AGCBaseCharacter::StartWallrun()
-{
+void AGCBaseCharacter::StartRequestingWallrun()
+{	
 	if (CanAttemptWallrun())
 	{
 		GCMovementComponent->RequestWallrunning();
 	}
 }
 
-void AGCBaseCharacter::StopWallrun()
+void AGCBaseCharacter::StopRequestingWallrun()
 {
 	GCMovementComponent->StopWallrunning(false);
 }
@@ -596,9 +648,26 @@ void AGCBaseCharacter::StopWallrun()
 bool AGCBaseCharacter::CanAttemptWallrun() const
 {
 	return IsPendingMovement()
-		&& CurrentStamina > 0.f
+		&& !CharacterAttributesComponent->IsOutOfStamina()
 		&& (GCMovementComponent->IsMovingOnGround() || GCMovementComponent->IsFalling())
 		&& GCMovementComponent->GetCurrentPosture() == EPosture::Standing;
+}
+
+void AGCBaseCharacter::OnWallrunBegin(ESide WallrunSide)
+{
+	CharacterAttributesComponent->SetWallrunning(true);
+	InterruptReloading();
+}
+
+void AGCBaseCharacter::OnWallrunEnd(ESide WallrunSide) const
+{
+	CharacterAttributesComponent->SetWallrunning(false);
+}
+
+void AGCBaseCharacter::StopWallrunning()
+{
+	GCMovementComponent->StopWallrunning(false);
+	CharacterAttributesComponent->SetWallrunning(false);
 }
 
 #pragma endregion WALLRUN
@@ -609,7 +678,12 @@ void AGCBaseCharacter::TryStartSliding()
 {
 	if (CanSlide())
 	{
-		GCMovementComponent->TryStartSliding();
+		bool bSlideStarted = GCMovementComponent->TryStartSliding();
+		if (bSlideStarted)
+		{
+			InterruptReloading();
+			StopSprinting();
+		}
 	}
 }
 
@@ -621,7 +695,167 @@ void AGCBaseCharacter::StopSliding(bool bForce)
 	}
 }
 
+void AGCBaseCharacter::OnSlidingStateChangedEvent(bool bSliding, float HalfHeightAdjust)
+{
+	ChangeMeshOffset(bSliding ? HalfHeightAdjust : -HalfHeightAdjust);
+}
+
 #pragma endregion SLIDE
+
+#pragma region WEAPONS
+
+bool AGCBaseCharacter::CanShoot() const
+{
+	return !(GCMovementComponent->IsSwimming() || GCMovementComponent->IsClimbing()
+		|| GCMovementComponent->IsZiplining() || GCMovementComponent->IsWallrunning()
+		|| GCMovementComponent->IsMantling());
+}
+
+void AGCBaseCharacter::StartFiring()
+{
+	if (CharacterAttributesComponent->IsAlive() && CanShoot())
+	{
+		ARangeWeaponItem* RangeWeapon = CharacterEquipmentComponent->GetCurrentRangeWeapon();
+		if (IsValid(RangeWeapon))
+		{
+			RangeWeapon->TryStartFiring(Controller);
+		}
+	}
+}
+
+void AGCBaseCharacter::StopFiring()
+{
+	CharacterEquipmentComponent->StopFiring();
+}
+
+void AGCBaseCharacter::StartAiming()
+{
+	ARangeWeaponItem* CurrentRangeWeapon = CharacterEquipmentComponent->GetCurrentRangeWeapon();
+	if (!IsValid(CurrentRangeWeapon) || !CanAim())
+	{
+		return;
+	}
+	
+	bAiming = true;
+	StopSprinting();
+	GCMovementComponent->SetIsAiming(true);
+	CurrentRangeWeapon->StartAiming();
+	OnAimingStart(CurrentRangeWeapon->GetAimFOV(), CurrentRangeWeapon->GetAimTurnModifier(), CurrentRangeWeapon->GetAimLookUpModifier());
+	AimingStateChangedEvent.ExecuteIfBound(true);
+}
+
+void AGCBaseCharacter::StopAiming()
+{
+	if (!bAiming)
+	{
+		return;
+	}
+	
+	bAiming = false;
+	GCMovementComponent->SetIsAiming(false);
+	ARangeWeaponItem* CurrentRangeWeapon = CharacterEquipmentComponent->GetCurrentRangeWeapon();
+	if (IsValid(CurrentRangeWeapon))
+	{
+		CurrentRangeWeapon->StopAiming();
+	}
+	
+	OnAimingEnd();
+	AimingStateChangedEvent.ExecuteIfBound(false);
+}
+
+void AGCBaseCharacter::StartReloading()
+{
+	if (CanReload())
+	{
+		FReloadData ReloadData = CharacterEquipmentComponent->TryReload();
+		if (ReloadData.bStarted && IsValid(ReloadData.CharacterReloadMontage))
+		{
+			const float ActualDuration = PlayAnimMontageWithDuration(ReloadData.CharacterReloadMontage, ReloadData.DesiredDuration);
+			if (ActualDuration > 0)
+			{
+				ActiveReloadMontage = ReloadData.CharacterReloadMontage;
+			}
+		}
+	}
+}
+
+void AGCBaseCharacter::PickWeapon(int Delta)
+{
+	InterruptReloading();
+	CharacterEquipmentComponent->EquipItem(Delta);
+}
+
+void AGCBaseCharacter::InterruptReloading()
+{
+	CharacterEquipmentComponent->InterruptReloading();
+	if (IsValid(ActiveReloadMontage))
+	{
+		StopAnimMontage(ActiveReloadMontage);
+		ActiveReloadMontage = nullptr;
+	}
+}
+
+bool AGCBaseCharacter::CanReload() const
+{
+	return (GCMovementComponent->IsMovingOnGround() || GCMovementComponent->IsFalling() || GCMovementComponent->IsProning())
+	&& !CharacterEquipmentComponent->IsChangingEquipment();
+}
+
+void AGCBaseCharacter::OnShot(UAnimMontage* AnimMontage)
+{
+	InterruptReloading();
+	PlayAnimMontage(AnimMontage);
+}
+
+void AGCBaseCharacter::OnChangingEquippedItemStarted(UAnimMontage* AnimMontage, float Duration)
+{
+	InterruptReloading();
+	PlayAnimMontageWithDuration(AnimMontage, Duration);
+}
+
+bool AGCBaseCharacter::CanAim() const
+{
+	return !bAiming && GCMovementComponent->IsMovingOnGround();
+}
+
+void AGCBaseCharacter::OnWeaponPickedUpChanged(class ARangeWeaponItem* EquippedWeapon, bool bPickedUp)
+{
+	if (bPickedUp)
+	{
+		EquippedWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, EquippedWeapon->GetCharacterUnequippedSocketName());
+		EquippedWeapon->ShootEvent.AddUObject(this, &AGCBaseCharacter::OnShot);
+		// oh oh
+		EquippedWeapon->AmmoChangedEvent.BindUObject(CharacterEquipmentComponent, &UCharacterEquipmentComponent::OnAmmoChanged);
+		EquippedWeapon->OutOfAmmoEvent.BindLambda([this](){ if (CharacterEquipmentComponent->IsAutoReload()) StartReloading(); });
+	}
+	else
+	{
+		// FDelegateHandle instead of this?
+		EquippedWeapon->ShootEvent.RemoveAll(this);
+		EquippedWeapon->OutOfAmmoEvent.Unbind();
+	}
+}
+
+void AGCBaseCharacter::OnWeaponEquippedChanged(ARangeWeaponItem* EquippedWeapon, bool bEquipped)
+{
+	FName SocketName;
+	if (bEquipped)
+	{
+		GCMovementComponent->SetAimingSpeed(EquippedWeapon->GetAimMaxSpeed());
+		SocketName = EquippedWeapon->GetCharacterEquippedSocketName();
+		UpdateStrafingControls();
+	}
+	else
+	{
+		SocketName = EquippedWeapon->GetCharacterUnequippedSocketName();
+	}
+
+	EquippedWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, SocketName);
+}
+
+#pragma endregion WEAPONS
+
+#pragma region MOVEMENT
 
 void AGCBaseCharacter::MoveForward(float Value)
 {
@@ -647,4 +881,59 @@ void AGCBaseCharacter::SetInputDisabled(bool bDisabledMovement, bool bDisabledCa
 void AGCBaseCharacter::OnMontageEndedUnlockControls(UAnimMontage* AnimMontage, bool bInterrupted)
 {
 	SetInputDisabled(false, false);
+	UpdateStrafingControls();
 }
+
+void AGCBaseCharacter::OnMantleEnded()
+{
+	GetMesh()->GetAnimInstance()->StopAllMontages(0.f);
+}
+
+void AGCBaseCharacter::EnableRagdoll() const
+{
+	GetMesh()->SetCollisionProfileName(ProfileRagdoll);
+	GetMesh()->SetSimulatePhysics(true);
+}
+
+void AGCBaseCharacter::UpdateStrafingControls()
+{
+	SetStrafingControlsState(GCMovementComponent->IsMovingOnGround() && CharacterEquipmentComponent->IsPreferStrafing()
+		&& !CharacterAttributesComponent->IsOutOfStamina() && GCMovementComponent->GetCurrentPosture() == EPosture::Standing
+		&& !GCMovementComponent->IsSprinting());
+}
+
+void AGCBaseCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
+{
+	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
+	CharacterAttributesComponent->SetMovementMode(GCMovementComponent->MovementMode);
+	if (PrevMovementMode == EMovementMode::MOVE_Swimming)
+	{
+		CharacterAttributesComponent->SetSuffocating(false);
+	}
+
+	UpdateStrafingControls();
+}
+
+void AGCBaseCharacter::SetStrafingControlsState(bool bStrafing)
+{
+	GCMovementComponent->bOrientRotationToMovement = !bStrafing;
+	bUseControllerRotationYaw = bStrafing;
+}
+
+#pragma endregion MOVEMENT
+
+void AGCBaseCharacter::ChangeMeshOffset(float HalfHeightAdjust)
+{
+	RecalculateBaseEyeHeight();
+	FVector& MeshRelativeLocation = GetMesh()->GetRelativeLocation_DirectMutable();
+	MeshRelativeLocation.Z += HalfHeightAdjust;
+	BaseTranslationOffset.Z = MeshRelativeLocation.Z;
+}
+
+float AGCBaseCharacter::PlayAnimMontageWithDuration(UAnimMontage* Montage, float DesiredDuration)
+{
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	const float PlayRate = Montage->GetPlayLength() / DesiredDuration;
+	return AnimInstance->Montage_Play(Montage, PlayRate);
+}
+

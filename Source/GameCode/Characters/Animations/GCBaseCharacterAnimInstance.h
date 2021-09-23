@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Animation/AnimInstance.h"
+#include "Data/EquippableItemType.h"
 #include "GameCode/Data/Side.h"
 #include "GCBaseCharacterAnimInstance.generated.h"
 
@@ -21,40 +22,40 @@ protected:
 	float Speed = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	uint8 bInAir:1;
+	bool bInAir;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	uint8 bCrouching:1;
+	bool bCrouching;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	uint8 bSprinting:1;
+	bool bSprinting;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	uint8 bProning:1;
+	bool bProning;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	uint8 bOutOfStamina:1;
+	bool bOutOfStamina;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	uint8 bSwimming:1;
+	bool bSwimming;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	uint8 bClimbingLadder:1;
+	bool bClimbingLadder;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	uint8 bZiplining:1;	
+	bool bZiplining;	
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	uint8 bWallRunning:1;
+	bool bWallRunning;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	ESide WallrunSide = ESide::None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	uint8 bSliding:1;
+	bool bSliding;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	uint8 bStrafing:1;
+	bool bStrafing;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(UIMin = -180, UIMax = 180))
 	float Direction = 0.f;
@@ -82,6 +83,21 @@ protected:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float ClimbingRatio = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	EEquippableItemType EquippedItemType;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Transient, Category = "Character")
+	FRotator Rotation = FRotator::ZeroRotator;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Transient, Category = "Character")
+	FTransform WeaponForegripTransform;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Transient, Category = "Character")
+	bool bForegrip;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Transient, Category = "Character")
+	bool bAiming;
 	
 	TWeakObjectPtr<class AGCBaseCharacter> Character;
 };

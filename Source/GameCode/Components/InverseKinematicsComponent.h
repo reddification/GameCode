@@ -4,11 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "GameCode/Data/IKData.h"
-#include "GameCode/Data/IKSettings.h"
+#include "GameCode/Data/Movement/IKData.h"
+#include "GameCode/Data/Movement/IKSettings.h"
 
 #include "InverseKinematicsComponent.generated.h"
-
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class GAMECODE_API UInverseKinematicsComponent : public UActorComponent

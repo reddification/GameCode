@@ -3,7 +3,11 @@
 
 #include "GCBaseCharacterAnimInstance.h"
 
+#include "Actors/Equipment/Weapons/RangeWeaponItem.h"
+#include "Components/CharacterEquipmentComponent.h"
+#include "Data/Movement/IKData.h"
 #include "GameCode/Characters/GCBaseCharacter.h"
+#include "GameCode/Components/CharacterAttributesComponent.h"
 #include "GameCode/Components/InverseKinematicsComponent.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -24,12 +28,14 @@ void UGCBaseCharacterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		return;
 	}
 
-	const auto MovementComponent = Character->GetGCMovementComponent();
+	const UGCBaseCharacterMovementComponent* MovementComponent = Character->GetGCMovementComponent();
+	const UCharacterAttributesComponent* AttributesComponent = Character->GetCharacterAttributesComponent();
+	
 	Speed = MovementComponent->Velocity.Size();
 	bInAir = MovementComponent->IsFlying() || MovementComponent->IsFalling();
 	bCrouching = MovementComponent->IsCrouching();
 	bSprinting = MovementComponent->IsSprinting();
-	bOutOfStamina = MovementComponent->IsOutOfStamina();
+	bOutOfStamina = AttributesComponent->IsOutOfStamina();
 	bProning = MovementComponent->IsProning();
 	bSwimming = MovementComponent->IsSwimming();	
 	bClimbingLadder = MovementComponent->IsClimbing();
@@ -43,8 +49,22 @@ void UGCBaseCharacterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	{
 		Direction = CalculateDirection(MovementComponent->Velocity, Character->GetActorRotation());
 	}
-		
-	const auto& IkData = Character->InverseKinematicsComponent->GetIkData();
+
+	EquippedItemType = Character->GetEquipmentComponent()->GetEquippedItemType();
+	Rotation = Character->GetBaseAimRotation();
+
+	ARangeWeaponItem* CurrentRangeWeapon = Character->GetEquipmentComponent()->GetCurrentRangeWeapon();
+	bForegrip = IsValid(CurrentRangeWeapon) && CurrentRangeWeapon->GetEquippableItemType() == EEquippableItemType::AssaultRifle;
+
+	// TODO works like shit. refactor/redo with virtual bones/2 hands ik?
+	if (bForegrip)
+	{
+		WeaponForegripTransform = CurrentRangeWeapon->GetForegripTransform();
+	}
+
+	bAiming = Character->IsAiming();
+	
+	const FIkData& IkData = Character->GetInverseKinematicsComponent()->GetIkData();
 	// constraining max foot elevation when crouching because it looks shitty with current animations
 	float AdjustedRightFootElevation = bCrouching && IkData.RightFootElevation > 0.f
 		? FMath::Clamp(IkData.RightFootElevation, 0.0f, 10.0f)
