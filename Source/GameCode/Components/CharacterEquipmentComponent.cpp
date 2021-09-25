@@ -6,7 +6,6 @@
 #include "Characters/GCBaseCharacter.h"
 #include "Data/ReloadData.h"
 
-
 void UCharacterEquipmentComponent::BeginPlay()
 {
 	Super::BeginPlay();
@@ -36,6 +35,8 @@ void UCharacterEquipmentComponent::CreateLoadout()
 
 	EquipItem(EEquipmentSlot::SideArm);
 }
+
+#pragma region CHANGING EQUIPMENT
 
 void UCharacterEquipmentComponent::EquipItem(int delta)
 {
@@ -144,18 +145,9 @@ void UCharacterEquipmentComponent::InterruptChangingEquipment()
 	bChangingEquipment = false;
 }
 
-EEquippableItemType UCharacterEquipmentComponent::GetEquippedItemType() const
-{
-	return IsValid(EquippedWeapon) ? EquippedWeapon->GetEquippableItemType() : EEquippableItemType::None;
-}
+#pragma endregion CHANGING EQUIPMENT
 
-void UCharacterEquipmentComponent::StopFiring() const
-{
-	if (IsValid(EquippedWeapon))
-	{
-		EquippedWeapon->StopFiring();
-	}
-}
+#pragma region RELOAD
 
 FReloadData UCharacterEquipmentComponent::TryReload()
 {
@@ -168,9 +160,15 @@ FReloadData UCharacterEquipmentComponent::TryReload()
 	
 	bReloading = true;
 	const float ReloadDuration = EquippedWeapon->GetReloadDuration() * ReloadDurationMultiplier;
-	GetWorld()->GetTimerManager().SetTimer(ReloadTimer, this, &UCharacterEquipmentComponent::CompleteReloading, ReloadDuration);
+
+	UAnimMontage* CharacterReloadMontage = EquippedWeapon->GetCharacterReloadMontage();
+	if (EquippedWeapon->GetReloadType() != EReloadType::ShellByShell || !IsValid(CharacterReloadMontage))
+	{
+		GetWorld()->GetTimerManager().SetTimer(ReloadTimer, this, &UCharacterEquipmentComponent::CompleteReloading, ReloadDuration);
+	}
+	
 	EquippedWeapon->StartReloading(ReloadDuration);
-	return FReloadData(EquippedWeapon->GetCharacterReloadMontage(), ReloadDuration);
+	return FReloadData(CharacterReloadMontage, ReloadDuration);
 }
 
 void UCharacterEquipmentComponent::InterruptReloading()
@@ -184,9 +182,17 @@ void UCharacterEquipmentComponent::InterruptReloading()
 	if (IsValid(EquippedWeapon))
 	{
 		EquippedWeapon->StopReloading(true);
+		UAnimMontage* CharacterReloadMontage = EquippedWeapon->GetCharacterReloadMontage();
+		if (IsValid(CharacterReloadMontage))
+		{
+			CharacterOwner->GetMesh()->GetAnimInstance()->Montage_Stop(CharacterReloadMontage->BlendOut.GetBlendTime(), CharacterReloadMontage);
+		}
 	}
 
-	GetWorld()->GetTimerManager().ClearTimer(ReloadTimer);
+	if (EquippedWeapon->GetReloadType() == EReloadType::FullClip)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(ReloadTimer);
+	}
 }
 
 void UCharacterEquipmentComponent::CompleteReloading()
@@ -210,11 +216,11 @@ void UCharacterEquipmentComponent::CompleteReloading()
 	int32 NewAmmo = 0;
 	switch (ReloadType)
 	{
-		case EReloadType::KeepUnspentAmmo:
+		case EReloadMode::KeepUnspentAmmo:
 			AmmoToReload = FMath::Min(ClipCapacity - CurrentAmmo, RemainingAmmo);
 			NewAmmo = CurrentAmmo + AmmoToReload;
 			break;
-		case EReloadType::DiscardUnspendAmmo:
+		case EReloadMode::DiscardUnspendAmmo:
 			NewAmmo = AmmoToReload = FMath::Min(ClipCapacity, RemainingAmmo);
 			break;
 		default:
@@ -223,6 +229,45 @@ void UCharacterEquipmentComponent::CompleteReloading()
 
 	RemainingAmmo -= AmmoToReload;
 	EquippedWeapon->SetAmmo(NewAmmo);
+}
+
+void UCharacterEquipmentComponent::ReloadInsertShells(uint8 ShellsInsertedAtOnce)
+{
+	if (!bReloading)
+	{
+		return;
+	}
+
+	int32 ClipCapacity = EquippedWeapon->GetClipCapacity();
+	int32 CurrentAmmo = EquippedWeapon->GetAmmo();
+	int32& RemainingAmmo = Pouch[(uint32)EquippedWeapon->GetAmmunitionType()];
+	int32 AmmoToReload = FMath::Min((int32)ShellsInsertedAtOnce, RemainingAmmo);
+	RemainingAmmo -= AmmoToReload;
+	int32 NewAmmo = CurrentAmmo + AmmoToReload;
+	EquippedWeapon->SetAmmo(NewAmmo);
+	if (NewAmmo == ClipCapacity)
+	{
+		UAnimInstance* CharacterAnimInstance = CharacterOwner->GetMesh()->GetAnimInstance();
+		UAnimInstance* WeaponAnimInstance = EquippedWeapon->GetMesh()->GetAnimInstance();
+		CharacterAnimInstance->Montage_JumpToSection(ReloadMontageEndSectionName, EquippedWeapon->GetCharacterReloadMontage());
+		WeaponAnimInstance->Montage_JumpToSection(ReloadMontageEndSectionName, EquippedWeapon->GetWeaponReloadMontage());
+		bReloading = false;
+	}
+}
+
+#pragma endregion RELOAD
+
+EEquippableItemType UCharacterEquipmentComponent::GetEquippedItemType() const
+{
+	return IsValid(EquippedWeapon) ? EquippedWeapon->GetEquippableItemType() : EEquippableItemType::None;
+}
+
+void UCharacterEquipmentComponent::StopFiring() const
+{
+	if (IsValid(EquippedWeapon))
+	{
+		EquippedWeapon->StopFiring();
+	}
 }
 
 void UCharacterEquipmentComponent::OnAmmoChanged(int32 ClipAmmo) const

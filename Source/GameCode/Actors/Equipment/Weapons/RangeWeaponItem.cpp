@@ -3,8 +3,6 @@
 
 #include "Actors/Equipment/Weapons/RangeWeaponItem.h"
 
-#include <PxMathUtils.h>
-
 #include "GameCode.h"
 #include "Components/WeaponBarrelComponent.h"
 
@@ -19,59 +17,31 @@ ARangeWeaponItem::ARangeWeaponItem()
 	WeaponBarrelComponent->SetupAttachment(WeaponMeshComponent, MuzzleSocketName);
 }
 
+void ARangeWeaponItem::BeginPlay()
+{
+	Super::BeginPlay();
+	SetAmmo(ClipCapacity);
+}
+
+#pragma region SHOOT
+
 bool ARangeWeaponItem::TryStartFiring(AController* ShooterController)
 {
-	CachedShooterController = ShooterController;
-	switch (FireMode)
+	// why not bFiring?
+	if (GetWorld()->GetTimerManager().IsTimerActive(ShootTimer))
 	{
-		case EWeaponFireMode::Single:
-			Shoot();
-		case EWeaponFireMode::Burst:
-			// TODO
-			break;
-		case EWeaponFireMode::FullAuto:
-			Shoot();
-			GetWorld()->GetTimerManager().ClearTimer(AutoShootTimer);
-			GetWorld()->GetTimerManager().SetTimer(AutoShootTimer, this, &ARangeWeaponItem::Shoot, GetShootTimerInterval(), true);
-			break;
-		default:
-			break;
+		return false;
 	}
 	
+	CachedShooterController = ShooterController;
+	bFiring = true;
+	Shoot();
 	return true;
 }
 
 void ARangeWeaponItem::StopFiring()
 {
-	if (FireMode == EWeaponFireMode::FullAuto)
-	{
-		GetWorld()->GetTimerManager().ClearTimer(AutoShootTimer);
-	}
-}
-
-void ARangeWeaponItem::StartAiming()
-{
-	bAiming = true;
-}
-
-void ARangeWeaponItem::StopAiming()
-{
-	bAiming = false;
-}
-
-void ARangeWeaponItem::StartReloading(float DesiredReloadDuration)
-{
-	bReloading = true;
-	PlayAnimMontage(WeaponReloadMontage, DesiredReloadDuration);
-}
-
-void ARangeWeaponItem::StopReloading(bool bInterrupted)
-{
-	bReloading = false;
-	if (bInterrupted)
-	{
-		WeaponMeshComponent->GetAnimInstance()->Montage_Stop(0.0f, WeaponReloadMontage);
-	}
+	bFiring = false;
 }
 
 void ARangeWeaponItem::Shoot()
@@ -90,13 +60,40 @@ void ARangeWeaponItem::Shoot()
 	FRotator ViewRotation;
 	CachedShooterController->GetPlayerViewPoint(ViewLocation, ViewRotation);
 	FVector ViewDirection = ViewRotation.Vector();
-	ViewDirection += GetBulletSpreadOffset(ViewRotation);
-	WeaponBarrelComponent->Shoot(ViewLocation, ViewDirection, CachedShooterController);
+	for (auto i = 0; i < BulletsPerShot; i++)
+	{
+		WeaponBarrelComponent->Shoot(ViewLocation, ViewDirection + GetBulletSpreadOffset(ViewRotation), CachedShooterController);
+	}
+
 	SetAmmo(Ammo - 1);
 	PlayAnimMontage(WeaponShootMontage);
+	WeaponBarrelComponent->FinalizeShot();
 	if (ShootEvent.IsBound())
 	{
 		ShootEvent.Broadcast(CharacterShootMontage);
+	}
+
+	GetWorld()->GetTimerManager().SetTimer(ShootTimer, this, &ARangeWeaponItem::ResetShot, GetShootTimerInterval(), false);
+}
+
+void ARangeWeaponItem::ResetShot()
+{
+	if (!bFiring)
+	{
+		return;
+	}
+
+	switch (FireMode)
+	{
+		case EWeaponFireMode::Single:
+			StopFiring();
+			break;
+		case EWeaponFireMode::FullAuto:
+			Shoot();
+			break;
+		default:
+			StopFiring();
+			break;
 	}
 }
 
@@ -116,6 +113,43 @@ float ARangeWeaponItem::GetBulletSpreadAngleRad() const
 	return FMath::DegreesToRadians(bAiming ? AimSpreadAngle : SpreadAngle); 
 }
 
+
+#pragma endregion SHOOT
+
+#pragma region AIM
+
+void ARangeWeaponItem::StartAiming()
+{
+	bAiming = true;
+}
+
+void ARangeWeaponItem::StopAiming()
+{
+	bAiming = false;
+}
+
+#pragma endregion AIM
+
+#pragma region RELOAD
+
+void ARangeWeaponItem::StartReloading(float DesiredReloadDuration)
+{
+	bReloading = true;
+	PlayAnimMontage(WeaponReloadMontage, DesiredReloadDuration);
+}
+
+void ARangeWeaponItem::StopReloading(bool bInterrupted)
+{
+	bReloading = false;
+	if (bInterrupted)
+	{
+		WeaponMeshComponent->GetAnimInstance()->Montage_Stop(0.0f, WeaponReloadMontage);
+	}
+}
+
+#pragma endregion RELOAD
+
+
 void ARangeWeaponItem::SetAmmo(int32 NewAmmo)
 {
 	Ammo = NewAmmo;
@@ -124,13 +158,7 @@ void ARangeWeaponItem::SetAmmo(int32 NewAmmo)
 
 FTransform ARangeWeaponItem::GetForegripTransform() const
 {
-	return WeaponMeshComponent->GetSocketTransform(SocketAssaultRifleForegrip);
-}
-
-void ARangeWeaponItem::BeginPlay()
-{
-	Super::BeginPlay();
-	SetAmmo(ClipCapacity);
+	return WeaponMeshComponent->GetSocketTransform(SocketForegrip);
 }
 
 float ARangeWeaponItem::PlayAnimMontage(UAnimMontage* AnimMontage, float DesiredDuration)

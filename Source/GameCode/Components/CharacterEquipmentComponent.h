@@ -50,6 +50,8 @@ public:
 
 	void OnAmmoChanged(int32 ClipAmmo) const;
 	bool IsChangingEquipment() const { return bChangingEquipment; }
+
+	void ReloadInsertShells(uint8 ShellsInsertedAtOnce);
 	
 protected:
 	virtual void BeginPlay() override;
@@ -68,11 +70,14 @@ protected:
 	bool bAutoReload = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Reload")
-	EReloadType ReloadType = EReloadType::DiscardUnspendAmmo;
+	EReloadMode ReloadType = EReloadMode::DiscardUnspendAmmo;
 
 	// The smaller this value the faster reloading goes
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Reload")
 	float ReloadDurationMultiplier = 1.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Reload")
+	FName ReloadMontageEndSectionName = FName("EndReload");
 	
 private:
 	mutable ARangeWeaponItem* EquippedWeapon = nullptr;

@@ -22,6 +22,6 @@ const FName ProfileInteractionVolume = FName("PawnInteractionVolume");
 // TODO move it somewhere to be configurable?
 const FName SocketPistol = FName("hand_r_pistol_socket"); 
 const FName SocketAssaultRifle = FName("hand_r_assault_rifle_socket"); 
-const FName SocketAssaultRifleForegrip = FName("assault_rifle_foregrip_socket");
+const FName SocketForegrip = FName("foregrip_socket");
 
 const FName FXParamTraceEnd = FName("TraceEnd");

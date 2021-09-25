@@ -41,7 +41,11 @@ void UWeaponBarrelComponent::Shoot(const FVector& ViewLocation, const FVector& D
 		
 		if (IsValid(HitActor))
 		{
-			HitActor->TakeDamage(Damage, FDamageEvent(), ShooterController, GetOwner());	
+			FPointDamageEvent DamageEvent;
+			DamageEvent.HitInfo = ShotResult;
+			DamageEvent.ShotDirection = Direction;
+			DamageEvent.DamageTypeClass = DamageTypeClass;
+			HitActor->TakeDamage(Damage, DamageEvent, ShooterController, GetOwner());	
 		}
 		
 		if (bDrawDebugEnabled)
@@ -63,11 +67,14 @@ void UWeaponBarrelComponent::Shoot(const FVector& ViewLocation, const FVector& D
 		DrawDebugLine(World, ProjectileStartLocation, ProjectileEndLocation, FColor::Red, false, 2.f);
 	}
 
-	UNiagaraFunctionLibrary::SpawnSystemAtLocation(World, MuzzleFlashFX, ProjectileStartLocation, GetComponentRotation());
 	UNiagaraComponent* TraceFXComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), TraceFX, ProjectileStartLocation, GetComponentRotation());
 	TraceFXComponent->SetVectorParameter(FXParamTraceEnd, ProjectileEndLocation);
 }
 
+void UWeaponBarrelComponent::FinalizeShot() const
+{
+	UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), MuzzleFlashFX, GetComponentLocation(), GetComponentRotation());
+}
 
 #if UE_BUILD_DEVELOPMENT || UE_BUILD_DEBUG
 

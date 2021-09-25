@@ -17,6 +17,7 @@ class GAMECODE_API UWeaponBarrelComponent : public USceneComponent
 
 public:	
 	void Shoot(const FVector& ViewLocation, const FVector& Direction, AController* ShooterController);
+	void FinalizeShot() const;
 
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
@@ -37,6 +38,9 @@ protected:
 	// MUst be normalized 0..1 on both axis. Curve value will be multiplied by InitialDamage and applied to actor
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	class UCurveFloat* DamageFalloffDiagram;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TSubclassOf<class UDamageType> DamageTypeClass;
 	
 private:
 

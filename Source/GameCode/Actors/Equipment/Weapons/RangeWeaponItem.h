@@ -39,8 +39,11 @@ public:
 	
 	UAnimMontage* GetCharacterShootMontage() const { return CharacterShootMontage; }
 	UAnimMontage* GetCharacterReloadMontage() const { return CharacterReloadMontage; }
+	const UAnimMontage* GetWeaponReloadMontage() const { return WeaponReloadMontage; }
 
 	FTransform GetForegripTransform() const;
+	EReloadType GetReloadType() const { return ReloadType; }
+	USkeletalMeshComponent* GetMesh() { return WeaponMeshComponent; }
 
 	mutable FShootEvent ShootEvent;
 	mutable FAmmoChangedEvent AmmoChangedEvent;
@@ -118,17 +121,25 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin = 0.01f, UIMin = 0.01f))
 	float ReloadDuration = 1.f;
 	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin=1, UIMin=1))
+	int32 BulletsPerShot = 1;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	EReloadType ReloadType = EReloadType::FullClip;
+	
 private:
 	bool bAiming = false;
 	bool bReloading = false;
+	bool bFiring = false;
 	int32 Ammo = 0;
-	FTimerHandle AutoShootTimer;
-	FTimerHandle ReloadTimer;
+	FTimerHandle ShootTimer;
+	
 	class AController* CachedShooterController = nullptr;
 
 	float PlayAnimMontage(UAnimMontage* AnimMontage, float DesiredDuration = -1);
 	float GetShootTimerInterval() const { return 60.f / FireRate; };
 	void Shoot();
+	void ResetShot();
 	FVector GetBulletSpreadOffset(const FRotator& ShotOrientation) const;
 	float GetBulletSpreadAngleRad () const;
 };

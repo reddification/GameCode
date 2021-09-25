@@ -44,7 +44,7 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	UInverseKinematicsComponent* GetInverseKinematicsComponent() const { return InverseKinematicsComponent; }
-	const UCharacterEquipmentComponent* GetEquipmentComponent () const { return CharacterEquipmentComponent; }
+	UCharacterEquipmentComponent* GetEquipmentComponent () const { return CharacterEquipmentComponent; }
 	const UGCBaseCharacterMovementComponent* GetGCMovementComponent () const { return GCMovementComponent; }
 	const UCharacterAttributesComponent* GetCharacterAttributesComponent() const { return CharacterAttributesComponent; }
 	
