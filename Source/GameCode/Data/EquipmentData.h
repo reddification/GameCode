@@ -1,4 +1,7 @@
 ﻿#pragma once
+
+#include "EquipmentTypes.h"
+
 class ARangeWeaponItem;
 
 struct FEquipmentData

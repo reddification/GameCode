@@ -5,20 +5,29 @@
 
 #include "Components/CharacterAttributesComponent.h"
 #include "Components/CharacterEquipmentComponent.h"
+#include "Actors/Equipment/Weapons/RangeWeaponItem.h"
+#include "Components/NameplateComponent.h"
 #include "GameCode/Characters/GCBaseCharacter.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
 
 void AGCPlayerController::SetPawn(APawn* InPawn)
 {
 	Super::SetPawn(InPawn);
-	// checkf(InPawn->IsA<AGCBaseCharacter>(), TEXT("GCPlayerController::SetPawn: Pawn is not AGCBaseCharacter"));
 	BaseCharacter = Cast<AGCBaseCharacter>(InPawn);
 	if (BaseCharacter.IsValid())
 	{
+		UCharacterEquipmentComponent* EquipmentComponent = BaseCharacter->GetEquipmentComponent();
 		BaseCharacter->AimingStateChangedEvent.BindUObject(this, &AGCPlayerController::OnAimingStateChanged);
-		BaseCharacter->GetCharacterAttributesComponent()->HealthChangedEvent.AddUObject(this, &AGCPlayerController::OnHealthChanged);
-		BaseCharacter->GetEquipmentComponent()->WeaponAmmoChangedEvent.BindUObject(this, &AGCPlayerController::OnAmmoChanged);
+		BaseCharacter->GetCharacterAttributesComponent()->AttributeChangedEvent.AddUObject(this, &AGCPlayerController::OnAttributeChanged);
+		
+		EquipmentComponent->WeaponAmmoChangedEvent.BindUObject(this, &AGCPlayerController::OnAmmoChanged);
+		EquipmentComponent->WeaponEquippedChangedEvent.AddUObject(this, &AGCPlayerController::OnWeaponEquipStateChanged);
 	}
+}
+
+void AGCPlayerController::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
 }
 
 void AGCPlayerController::BeginPlay()
@@ -74,6 +83,7 @@ void AGCPlayerController::SetupInputComponent()
 	InputComponent->BindAction("NextWeapon", EInputEvent::IE_Pressed, this, &AGCPlayerController::PickNextWeapon);
 	InputComponent->BindAction("PreviousWeapon", EInputEvent::IE_Pressed, this, &AGCPlayerController::PickPreviousWeapon);
 
+	InputComponent->BindAction("ThrowItem", EInputEvent::IE_Pressed, this, &AGCPlayerController::ThrowItem);
 }
 
 void AGCPlayerController::Interact() 
@@ -301,11 +311,19 @@ void AGCPlayerController::PickPreviousWeapon()
 	}
 }
 
-void AGCPlayerController::OnHealthChanged(float HealthPercent) const
+void AGCPlayerController::OnAttributeChanged(ECharacterAttribute Attribute, float Percent) const
 {
 	if (IsValid(PlayerHUDWidget))
 	{
-		PlayerHUDWidget->SetHealth(HealthPercent);
+		PlayerHUDWidget->OnAttributeChanged(Attribute, Percent);
+	}
+}
+
+void AGCPlayerController::ThrowItem()
+{
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
+		BaseCharacter->ThrowItem();
 	}
 }
 
@@ -317,11 +335,25 @@ void AGCPlayerController::StopFiring()
 	}
 }
 
-void AGCPlayerController::OnAimingStateChanged(bool bAiming)
+void AGCPlayerController::OnAimingStateChanged(bool bAiming, EReticleType NewReticleType, ARangeWeaponItem* Weapon)
 {
 	if (IsValid(PlayerHUDWidget))
 	{
-		PlayerHUDWidget->OnAimingStateChanged(bAiming);
+		PlayerHUDWidget->OnAimingStateChanged(bAiming, NewReticleType);
+	}
+
+	if (IsValid(Weapon) && Weapon->GetAimReticleType() == EReticleType::Scope)
+	{
+		FViewTargetTransitionParams TransitionParams;
+		TransitionParams.BlendTime = 0.2;
+		if (bAiming)
+		{
+			SetViewTarget(Weapon, TransitionParams);
+		}
+		else
+		{
+			SetViewTarget(BaseCharacter.Get(), TransitionParams);
+		}
 	}
 }
 
@@ -331,4 +363,14 @@ void AGCPlayerController::OnAmmoChanged(int32 NewAmmo, int32 TotalAmmo)
 	{
 		PlayerHUDWidget->SetAmmo(NewAmmo, TotalAmmo);
 	}
+}
+
+void AGCPlayerController::OnWeaponEquipStateChanged(ARangeWeaponItem* EquippedWeapon, bool bEquipped)
+{
+	if (IsValid(PlayerHUDWidget))
+	{
+		PlayerHUDWidget->SetReticleType(bEquipped ? EquippedWeapon->GetReticleType() : EReticleType::None);
+		// PlayerHUDWidget->SetWeaponName(EquippedWeapon->GetNameplateComponent()->GetName());
+	}
+	
 }

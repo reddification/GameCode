@@ -4,17 +4,27 @@
 #include "Actors/Equipment/Weapons/RangeWeaponItem.h"
 
 #include "GameCode.h"
+#include "Camera/CameraComponent.h"
+#include "Characters/GCBaseCharacter.h"
 #include "Components/WeaponBarrelComponent.h"
 
 ARangeWeaponItem::ARangeWeaponItem()
 {
-	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
-
 	WeaponMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Weapon Mesh"));
 	WeaponMeshComponent->SetupAttachment(RootComponent);
 
 	WeaponBarrelComponent = CreateDefaultSubobject<UWeaponBarrelComponent>(TEXT("Barrel"));
 	WeaponBarrelComponent->SetupAttachment(WeaponMeshComponent, MuzzleSocketName);
+
+	ScopeCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("Scope"));
+	ScopeCameraComponent->SetupAttachment(WeaponMeshComponent);
+	
+	ReticleType = EReticleType::Crosshair;
+}
+
+EReticleType ARangeWeaponItem::GetReticleType() const
+{
+	return bAiming ? AimReticleType : ReticleType;
 }
 
 void ARangeWeaponItem::BeginPlay()
@@ -100,6 +110,11 @@ void ARangeWeaponItem::ResetShot()
 FVector ARangeWeaponItem::GetBulletSpreadOffset(const FRotator& ShotOrientation) const
 {
 	float PitchAngle = FMath::RandRange(0.f, GetBulletSpreadAngleRad());
+	if (FMath::IsNearlyZero(PitchAngle, KINDA_SMALL_NUMBER))
+	{
+		return FVector::ZeroVector;
+	}
+	
 	float SpreadSize = FMath::Tan(PitchAngle);
 	float RotationAngle = FMath::RandRange(0.f, 2 * PI);
 	float SpreadY = FMath::Cos(RotationAngle);

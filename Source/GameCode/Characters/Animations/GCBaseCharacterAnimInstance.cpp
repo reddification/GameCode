@@ -4,6 +4,7 @@
 #include "GCBaseCharacterAnimInstance.h"
 
 #include "Actors/Equipment/Weapons/RangeWeaponItem.h"
+#include "Camera/CameraComponent.h"
 #include "Components/CharacterEquipmentComponent.h"
 #include "Data/Movement/IKData.h"
 #include "GameCode/Characters/GCBaseCharacter.h"
@@ -51,10 +52,17 @@ void UGCBaseCharacterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	}
 
 	EquippedItemType = Character->GetEquipmentComponent()->GetEquippedItemType();
-	Rotation = Character->GetBaseAimRotation();
-
+	Rotation = Character->GetControlRotation();// - FRotator(90, 0, 0);
+	Rotation.Pitch = Rotation.Pitch > 180 ? Rotation.Pitch - 360 : Rotation.Pitch;
 	ARangeWeaponItem* CurrentRangeWeapon = Character->GetEquipmentComponent()->GetCurrentRangeWeapon();
-	bForegrip = IsValid(CurrentRangeWeapon) && CurrentRangeWeapon->GetEquippableItemType() == EEquippableItemType::AssaultRifle;
+	if (IsValid(CurrentRangeWeapon))
+	{
+		bForegrip = CurrentRangeWeapon->GetEquippableItemType() == EEquippableItemType::AssaultRifle;
+	}
+	else
+	{
+		bForegrip = false;
+	}
 
 	// TODO works like shit. refactor/redo with virtual bones/2 hands ik?
 	if (bForegrip)

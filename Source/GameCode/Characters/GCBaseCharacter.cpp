@@ -64,7 +64,7 @@ void AGCBaseCharacter::BeginPlay()
 	CharacterAttributesComponent->OutOfHealthEvent.AddUObject(this, &AGCBaseCharacter::OnOutOfHealth);
 	CharacterAttributesComponent->OutOfStaminaEvent.AddUObject(this, &AGCBaseCharacter::OnOutOfStamina);
 
-	CharacterEquipmentComponent->WeaponEquippedChangedEvent.BindUObject(this, &AGCBaseCharacter::OnWeaponEquippedChanged);
+	CharacterEquipmentComponent->WeaponEquippedChangedEvent.AddUObject(this, &AGCBaseCharacter::OnWeaponEquippedChanged);
 	CharacterEquipmentComponent->WeaponPickedUpEvent.BindUObject(this, &AGCBaseCharacter::OnWeaponPickedUpChanged);
 	CharacterEquipmentComponent->ChangingEquippedItemStarted.BindUObject(this, &AGCBaseCharacter::OnChangingEquippedItemStarted);
 	
@@ -93,7 +93,7 @@ void AGCBaseCharacter::Tick(float DeltaTime)
 void AGCBaseCharacter::OnOutOfHealth()
 {
 	bool bDeathMontagePlaying = false;
-	InterruptReloading();
+	InterruptOtherActions();
 	StopAnimMontage();
 	if (GCMovementComponent->IsMovingOnGround())
 	{
@@ -136,6 +136,10 @@ void AGCBaseCharacter::OnOutOfStamina(bool bOutOfStamina)
 		{
 			StopWallrunning();
 		}
+	}
+	else
+	{
+		UpdateStrafingControls();
 	}
 	
 	GCMovementComponent->SetIsOutOfStamina(bOutOfStamina);
@@ -311,7 +315,7 @@ void AGCBaseCharacter::NotifyJumpApex()
 
 FMontagePlayResult AGCBaseCharacter::PlayHardLandMontage()
 {
-	InterruptReloading();
+	InterruptOtherActions();
 	return PlayHardLandMontage(GetMesh()->GetAnimInstance(), HardLandMontageTP);
 }
 
@@ -350,7 +354,7 @@ void AGCBaseCharacter::Interact()
 		TryStartInteracting();
 		if (bInteracting)
 		{
-			InterruptReloading();
+			InterruptOtherActions();
 		}
 	}
 }
@@ -573,7 +577,7 @@ void AGCBaseCharacter::Mantle(bool bForce)
 		}
 		else
 		{
-			InterruptReloading();
+			InterruptOtherActions();
 		}
 		
 		if (bIsCrouched)
@@ -656,7 +660,7 @@ bool AGCBaseCharacter::CanAttemptWallrun() const
 void AGCBaseCharacter::OnWallrunBegin(ESide WallrunSide)
 {
 	CharacterAttributesComponent->SetWallrunning(true);
-	InterruptReloading();
+	InterruptOtherActions();
 }
 
 void AGCBaseCharacter::OnWallrunEnd(ESide WallrunSide) const
@@ -681,7 +685,7 @@ void AGCBaseCharacter::TryStartSliding()
 		bool bSlideStarted = GCMovementComponent->TryStartSliding();
 		if (bSlideStarted)
 		{
-			InterruptReloading();
+			InterruptOtherActions();
 			StopSprinting();
 		}
 	}
@@ -741,7 +745,7 @@ void AGCBaseCharacter::StartAiming()
 	GCMovementComponent->SetIsAiming(true);
 	CurrentRangeWeapon->StartAiming();
 	OnAimingStart(CurrentRangeWeapon->GetAimFOV(), CurrentRangeWeapon->GetAimTurnModifier(), CurrentRangeWeapon->GetAimLookUpModifier());
-	AimingStateChangedEvent.ExecuteIfBound(true);
+	AimingStateChangedEvent.ExecuteIfBound(true, CurrentRangeWeapon->GetReticleType(), CurrentRangeWeapon);
 }
 
 void AGCBaseCharacter::StopAiming()
@@ -754,13 +758,15 @@ void AGCBaseCharacter::StopAiming()
 	bAiming = false;
 	GCMovementComponent->SetIsAiming(false);
 	ARangeWeaponItem* CurrentRangeWeapon = CharacterEquipmentComponent->GetCurrentRangeWeapon();
+	EReticleType ReticleType = EReticleType::None;
 	if (IsValid(CurrentRangeWeapon))
 	{
 		CurrentRangeWeapon->StopAiming();
+		ReticleType = CurrentRangeWeapon->GetReticleType();
 	}
 	
 	OnAimingEnd();
-	AimingStateChangedEvent.ExecuteIfBound(false);
+	AimingStateChangedEvent.ExecuteIfBound(false, ReticleType, CurrentRangeWeapon);
 }
 
 void AGCBaseCharacter::StartReloading()
@@ -781,13 +787,19 @@ void AGCBaseCharacter::StartReloading()
 
 void AGCBaseCharacter::PickWeapon(int Delta)
 {
-	InterruptReloading();
-	CharacterEquipmentComponent->EquipItem(Delta);
+	InterruptOtherActions();
+	CharacterEquipmentComponent->EquipWeapon(Delta);
 }
 
-void AGCBaseCharacter::InterruptReloading()
+void AGCBaseCharacter::ThrowItem()
+{
+	CharacterEquipmentComponent->TryThrow();
+}
+
+void AGCBaseCharacter::InterruptOtherActions()
 {
 	CharacterEquipmentComponent->InterruptReloading();
+	CharacterEquipmentComponent->InterruptThrowingItem();
 	if (IsValid(ActiveReloadMontage))
 	{
 		StopAnimMontage(ActiveReloadMontage);
@@ -803,13 +815,13 @@ bool AGCBaseCharacter::CanReload() const
 
 void AGCBaseCharacter::OnShot(UAnimMontage* AnimMontage)
 {
-	InterruptReloading();
+	InterruptOtherActions();
 	PlayAnimMontage(AnimMontage);
 }
 
 void AGCBaseCharacter::OnChangingEquippedItemStarted(UAnimMontage* AnimMontage, float Duration)
 {
-	InterruptReloading();
+	InterruptOtherActions();
 	PlayAnimMontageWithDuration(AnimMontage, Duration);
 }
 
@@ -898,7 +910,8 @@ void AGCBaseCharacter::EnableRagdoll() const
 void AGCBaseCharacter::UpdateStrafingControls()
 {
 	SetStrafingControlsState(GCMovementComponent->IsMovingOnGround() && CharacterEquipmentComponent->IsPreferStrafing()
-		&& !CharacterAttributesComponent->IsOutOfStamina() && GCMovementComponent->GetCurrentPosture() == EPosture::Standing
+		&& !CharacterAttributesComponent->IsOutOfStamina()
+		&& (GCMovementComponent->GetCurrentPosture() == EPosture::Standing || GCMovementComponent->GetCurrentPosture() == EPosture::Crouching)
 		&& !GCMovementComponent->IsSprinting());
 }
 
@@ -906,9 +919,17 @@ void AGCBaseCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uin
 {
 	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
 	CharacterAttributesComponent->SetMovementMode(GCMovementComponent->MovementMode);
-	if (PrevMovementMode == EMovementMode::MOVE_Swimming)
+	switch (PrevMovementMode)
 	{
-		CharacterAttributesComponent->SetSuffocating(false);
+		case EMovementMode::MOVE_Swimming:
+			CharacterAttributesComponent->SetSuffocating(false);
+			break;
+		case EMovementMode::MOVE_Falling:
+		case EMovementMode::MOVE_Flying:
+			CharacterAttributesComponent->SetFalling(false);
+			break;
+		default:
+			break;
 	}
 
 	UpdateStrafingControls();

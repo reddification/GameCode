@@ -4,16 +4,8 @@
 #include "CharacterAttributesComponent.h"
 
 #include "DrawDebugHelpers.h"
-#include "GameCode/GameCode.h"
-#include "GameCode/GCDebugSubsystem.h"
 #include "GameCode/Characters/GCBaseCharacter.h"
 #include "Kismet/GameplayStatics.h"
-
-#if (UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT)
-#define ShowAttributes DebugDrawAttributes();
-#else
-#define ShowAttributes
-#endif	
 
 UCharacterAttributesComponent::UCharacterAttributesComponent()
 {
@@ -36,17 +28,17 @@ void UCharacterAttributesComponent::TickComponent(float DeltaTime, ELevelTick Ti
 		UpdateOxygen(DeltaTime);
 		UpdateStamina(DeltaTime);
 	}
-	
-	ShowAttributes
 }
 
 void UCharacterAttributesComponent::UpdateOxygen(float DeltaTime)
 {
+	bool bOxygenUpdated = false;
 	if (bSuffocating)
 	{
 		if (Oxygen > 0.f)
 		{
 			Oxygen = FMath::Max(Oxygen - OxygenConsumptionRate * DeltaTime, 0.f);
+			bOxygenUpdated = true;
 		}
 		else if (!GetWorld()->GetTimerManager().IsTimerActive(DrowningTimer))
 		{
@@ -57,6 +49,12 @@ void UCharacterAttributesComponent::UpdateOxygen(float DeltaTime)
 	else if (Oxygen < MaxOxygen)
 	{
 		Oxygen = FMath::Min(Oxygen + OxygenRestoreRate * DeltaTime, MaxOxygen);
+		bOxygenUpdated = true;
+	}
+
+	if (bOxygenUpdated && AttributeChangedEvent.IsBound())
+	{
+		AttributeChangedEvent.Broadcast(ECharacterAttribute::Oxygen, Oxygen / MaxOxygen);
 	}
 }
 
@@ -75,7 +73,7 @@ void UCharacterAttributesComponent::UpdateStamina(float DeltaTime)
 	{
 		ChangeStaminaValue(-StaminaConsumption * DeltaTime);
 	}
-	else if (CanRestoreStamina())
+	else if (CanRestoreStamina() && Stamina != MaxStamina)
 	{
 		ChangeStaminaValue(StaminaRestoreVelocity * DeltaTime);
 	}
@@ -92,7 +90,17 @@ float UCharacterAttributesComponent::GetStaminaConsumption() const
 
 void UCharacterAttributesComponent::ChangeStaminaValue(float StaminaModification)
 {
+	if (FMath::IsNearlyZero(StaminaModification))
+	{
+		return;
+	}
+	
 	Stamina = FMath::Clamp(Stamina + StaminaModification, 0.f, MaxStamina);
+	if (AttributeChangedEvent.IsBound())
+	{
+		AttributeChangedEvent.Broadcast(ECharacterAttribute::Stamina, Stamina / MaxStamina);
+	}
+	
 	if (Stamina == 0.f && !bRegeneratingStamina)
 	{
 		bRegeneratingStamina = true;
@@ -144,9 +152,9 @@ void UCharacterAttributesComponent::OnTakeAnyDamage(AActor* DamagedActor, float 
 void UCharacterAttributesComponent::ChangeHealth(float Delta)
 {
 	Health = FMath::Clamp(Health + Delta, 0.f, MaxHealth);
-	if (HealthChangedEvent.IsBound())
+	if (AttributeChangedEvent.IsBound())
 	{
-		HealthChangedEvent.Broadcast(Health / MaxHealth);
+		AttributeChangedEvent.Broadcast(ECharacterAttribute::Health, Health / MaxHealth);
 	}
 }
 
@@ -164,42 +172,3 @@ void UCharacterAttributesComponent::SetSuffocating(bool bNewState)
 		TimerManager.ClearTimer(DrowningTimer);
 	}
 }
-
-
-#if UE_BUILD_DEVELOPMENT || UE_BUILD_DEBUG
-
-void UCharacterAttributesComponent::DebugDrawAttributes() const
-{
-	if (!GetDebugSubsystem()->IsDebugCategoryEnabled(DebugCategoryAttributes))
-	{
-		return;
-	}
-	
-	const float CapsuleOffset = 96.f * GetOwner()->GetActorScale().Z;
-	const FVector TextLocation = GetOwner()->GetActorLocation() + (FVector::UpVector * CapsuleOffset);
-	const float DrawStaminaOffset = 5.f;
-	const float DrawHealthOffset = 10.f;
-	const float DrawOxygenOffset = 15.f;
-
-	DrawDebugString(GetWorld(), TextLocation + FVector::UpVector * DrawHealthOffset, FString::Printf(TEXT("Health: %.2f"), Health), nullptr,
-		FColor::Red, 0.f, true);
-	DrawDebugString(GetWorld(), TextLocation + FVector::UpVector * DrawStaminaOffset,
-		FString::Printf(TEXT("Stamina: %.2f"), Stamina), nullptr, FColor::Yellow, 0.f, true);
-	if (bSuffocating || Oxygen < MaxOxygen)
-	{
-		DrawDebugString(GetWorld(), TextLocation + FVector::UpVector * DrawOxygenOffset, FString::Printf(TEXT("Oxygen: %.2f"), Oxygen), nullptr,
-			FColor::Cyan, 0.f, true);
-	}
-}
-
-const UGCDebugSubsystem* UCharacterAttributesComponent::GetDebugSubsystem() const
-{
-	if (!IsValid(DebugSubsystem))
-	{
-		DebugSubsystem = UGameplayStatics::GetGameInstance(GetWorld())->GetSubsystem<UGCDebugSubsystem>();
-	}
-
-	return DebugSubsystem;
-}
-
-#endif	

@@ -4,10 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Data/CharacterTypes.h"
 #include "CharacterAttributesComponent.generated.h"
 
 DECLARE_MULTICAST_DELEGATE(FOutOfHealthEvent);
-DECLARE_MULTICAST_DELEGATE_OneParam(FHealthChangedEvent, float HealthPercent);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FAttributeChangedEvent, ECharacterAttribute Attribute, float Percent);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOutOfStaminaEvent, bool bOutOfStamina);
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -26,7 +27,7 @@ public:
 
 	mutable FOutOfHealthEvent OutOfHealthEvent;
 	mutable FOutOfStaminaEvent OutOfStaminaEvent;
-	mutable FHealthChangedEvent HealthChangedEvent;
+	mutable FAttributeChangedEvent AttributeChangedEvent;
 	
 	void SetWallrunning(bool bState) { bWallrunning = bState; }
 	void SetSprinting(bool bState) { bSprinting = bState; }
@@ -112,11 +113,5 @@ private:
 	void ChangeStaminaValue(float StaminaModification);
 
 	void ChangeHealth(float Delta);
-	
-#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
-	void DebugDrawAttributes() const;
-	mutable class UGCDebugSubsystem* DebugSubsystem;
-	const UGCDebugSubsystem* GetDebugSubsystem() const;
-#endif
 	
 };

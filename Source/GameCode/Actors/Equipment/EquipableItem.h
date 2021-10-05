@@ -1,13 +1,13 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Data/EquippableItemType.h"
+#include "Data/EquipmentTypes.h"
+#include "Data/UserInterfaceTypes.h"
 #include "GameFramework/Actor.h"
 #include "EquipableItem.generated.h"
 
 class UAnimMontage;
+class UNameplateComponent;
 
 UCLASS(Abstract, NotBlueprintable)
 class GAMECODE_API AEquipableItem : public AActor
@@ -15,6 +15,8 @@ class GAMECODE_API AEquipableItem : public AActor
 	GENERATED_BODY()
 
 public:
+	AEquipableItem();
+	
 	EEquippableItemType GetEquippableItemType() const { return EquippableItemType; }
 
 	FName GetCharacterEquippedSocketName() const { return CharacterEquippedSocketName; }
@@ -22,6 +24,10 @@ public:
 
 	UAnimMontage* GetCharacterEquipMontage() const { return CharacterEquipMontage; }
 	float GetEquipmentDuration() const { return EquipmentDuration; }
+
+	const UNameplateComponent* GetNameplateComponent() const { return NameplateComponent; }
+
+	virtual EReticleType GetReticleType() const { return ReticleType; }
 	
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
@@ -38,4 +44,10 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float EquipmentDuration = 1.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	UNameplateComponent* NameplateComponent;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	EReticleType ReticleType = EReticleType::None;
 };

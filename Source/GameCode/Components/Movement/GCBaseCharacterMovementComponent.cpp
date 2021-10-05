@@ -356,9 +356,13 @@ bool UGCBaseCharacterMovementComponent::TryWakeUpToState(EPosture DesiredPosture
 		default:
 			break;
 	}
-	
-	WokeUp.ExecuteIfBound(HalfHeightAdjust);
-	return CurrentPosture == DesiredPosture;
+
+	bool bSuccess = CurrentPosture == DesiredPosture;
+	if (bSuccess)
+	{
+		WokeUp.ExecuteIfBound(HalfHeightAdjust);
+	}
+	return bSuccess;
 }
 
 bool UGCBaseCharacterMovementComponent::TryWakeUp(float DesiredUnscaledHalfHeight, const FWakeUpParams& WakeUpParams, float& ScaledHalfHeightAdjust,

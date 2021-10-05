@@ -1,14 +1,12 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Data/UserInterfaceTypes.h"
 #include "ReticleWidget.generated.h"
 
-/**
- * 
- */
+class UCanvasPanel;
+
 UCLASS()
 class GAMECODE_API UReticleWidget : public UUserWidget
 {
@@ -17,4 +15,15 @@ class GAMECODE_API UReticleWidget : public UUserWidget
 public:
 	UFUNCTION(BlueprintImplementableEvent)
 	void OnAimingStateChanged(bool bAiming);
+
+	void SetReticleType(EReticleType NewReticleType);
+	
+	UPROPERTY()
+	EReticleType ReticleType;
+
+	UPROPERTY(BlueprintReadWrite, meta=(BindWidget))
+	UCanvasPanel* CrosshairCanvas;
+
+	UPROPERTY(BlueprintReadWrite, meta=(BindWidget))
+	UCanvasPanel* ScopeCanvas;
 };

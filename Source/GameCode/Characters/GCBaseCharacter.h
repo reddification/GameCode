@@ -12,7 +12,7 @@
 #include "GameFramework/Character.h"
 #include "GCBaseCharacter.generated.h"
 
-DECLARE_DELEGATE_OneParam(FAimingStateChangedEvent, bool bAiming);
+DECLARE_DELEGATE_ThreeParams(FAimingStateChangedEvent, bool bAiming, EReticleType NewReticleType, class ARangeWeaponItem* Weapon);
 
 class UGCBaseCharacterMovementComponent;
 class UInverseKinematicsComponent;
@@ -47,7 +47,7 @@ public:
 	UCharacterEquipmentComponent* GetEquipmentComponent () const { return CharacterEquipmentComponent; }
 	const UGCBaseCharacterMovementComponent* GetGCMovementComponent () const { return GCMovementComponent; }
 	const UCharacterAttributesComponent* GetCharacterAttributesComponent() const { return CharacterAttributesComponent; }
-	
+
 	mutable FAimingStateChangedEvent AimingStateChangedEvent;
 	mutable FAmmoChangedEvent AmmoChangedEvent;
 	
@@ -85,7 +85,8 @@ public:
 	void StartReloading();
 
 	void PickWeapon(int Delta);
-	
+	void ThrowItem();
+
 	bool CanAim() const;
 	bool IsAiming() const { return bAiming; }
 	
@@ -220,7 +221,7 @@ protected:
 
 	bool bAiming = false;
 
-	void InterruptReloading();
+	void InterruptOtherActions();
 	bool CanReload() const;
 
 	float PlayAnimMontageWithDuration(UAnimMontage* Montage, float DesiredDuration);

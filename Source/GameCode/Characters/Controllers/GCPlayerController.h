@@ -8,9 +8,6 @@
 #include "UI/PlayerHUDWidget.h"
 #include "GCPlayerController.generated.h"
 
-/**
- * 
- */
 UCLASS()
 class GAMECODE_API AGCPlayerController : public APlayerController
 {
@@ -18,7 +15,7 @@ class GAMECODE_API AGCPlayerController : public APlayerController
 
 public:
 	virtual void SetPawn(APawn* InPawn) override;
-
+	virtual void Tick(float DeltaSeconds) override;
 	bool IsIgnoreCameraPitch() const { return bIgnoreCameraPitch; }
 	void SetIgnoreCameraPitch(bool newValue) { bIgnoreCameraPitch = newValue; }
 
@@ -32,9 +29,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	UPlayerHUDWidget* PlayerHUDWidget;
-	
+
 private:
-	TSoftObjectPtr<class AGCBaseCharacter> BaseCharacter;
+	TWeakObjectPtr<class AGCBaseCharacter> BaseCharacter;
 	
 	void StartSliding();
 	void StopSliding();
@@ -70,11 +67,13 @@ private:
 
 	void PickNextWeapon();
 	void PickPreviousWeapon();
+
+	void ThrowItem();
 	
-	void OnHealthChanged(float HealthPercent) const;
+	void OnAttributeChanged(ECharacterAttribute Attribute, float Percent) const;
 	
 	bool bIgnoreCameraPitch;
-	void OnAimingStateChanged(bool bAiming);
+	void OnAimingStateChanged(bool bAiming, EReticleType NewReticleType, class ARangeWeaponItem* Weapon);
 	void OnAmmoChanged(int32 NewAmmo, int32 TotalAmmo);
-
+	void OnWeaponEquipStateChanged(class ARangeWeaponItem* EquippedWeapon, bool bEquipped);
 };

@@ -6,15 +6,33 @@
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraComponent.h"
+#include "Actors/Projectiles/GCProjectile.h"
 #include "Components/DecalComponent.h"
 
 void UWeaponBarrelComponent::Shoot(const FVector& ViewLocation, const FVector& Direction, AController* ShooterController)
 {
-	#if ENABLE_DRAW_DEBUG
+	bool bHit = false;
+	switch (HitRegistrationType)
+	{
+		case EHitRegistrationType::HitScan:
+			bHit = ShootHitScan(ViewLocation, Direction, ShooterController);
+			break;
+		case EHitRegistrationType::Projectile:
+			ShootProjectile(ViewLocation, Direction, ShooterController);
+			break;
+		default:
+			break;
+	}
+}
+
+bool UWeaponBarrelComponent::ShootHitScan(const FVector& ViewLocation, const FVector& Direction,
+                                          AController* ShooterController)
+{
+#if ENABLE_DRAW_DEBUG
 	bool bDrawDebugEnabled = GetDebugSubsystem()->IsDebugCategoryEnabled(DebugCategoryRangeWeapons);
-	#else
+#else
 	bool bDrawDebugEnabled = false;
-	#endif
+#endif
 
 	FVector ProjectileStartLocation = GetComponentLocation();
 	FVector ProjectileEndLocation = ViewLocation + Range * Direction;
@@ -24,6 +42,7 @@ void UWeaponBarrelComponent::Shoot(const FVector& ViewLocation, const FVector& D
 	CollisionQueryParams.AddIgnoredActor(GetOwner());
 	CollisionQueryParams.AddIgnoredActor(GetOwner()->GetOwner());
 	bool bHit = World->LineTraceSingleByChannel(ShotResult, ViewLocation, ProjectileEndLocation, ECC_Bullet, CollisionQueryParams);
+	// TODO DotProduct doesnt really solve the problem of shooting behind players back. Need to fix one day
 	if (bHit && FVector::DotProduct(Direction, ShotResult.ImpactPoint - ProjectileStartLocation) > 0.f)
 	{
 		ProjectileEndLocation = ShotResult.ImpactPoint + Direction * 5.f;
@@ -33,33 +52,14 @@ void UWeaponBarrelComponent::Shoot(const FVector& ViewLocation, const FVector& D
 	if (bHit)
 	{
 		ProjectileEndLocation = ShotResult.ImpactPoint;
-		AActor* HitActor = ShotResult.GetActor();
-		// Perhaps its better to use squared distance
-		float Damage = IsValid(DamageFalloffDiagram)
-			? DamageFalloffDiagram->GetFloatValue(ShotResult.Distance / Range) * InitialDamage
-			: InitialDamage;
-		
-		if (IsValid(HitActor))
-		{
-			FPointDamageEvent DamageEvent;
-			DamageEvent.HitInfo = ShotResult;
-			DamageEvent.ShotDirection = Direction;
-			DamageEvent.DamageTypeClass = DamageTypeClass;
-			HitActor->TakeDamage(Damage, DamageEvent, ShooterController, GetOwner());	
-		}
+		ApplyDamage(ShotResult, Direction, ShooterController);
 		
 		if (bDrawDebugEnabled)
 		{
 			DrawDebugSphere(World, ProjectileEndLocation, 10.f, 24, FColor::Red, false, 2.f);
 		}
 
-		UDecalComponent* DecalComponent = UGameplayStatics::SpawnDecalAtLocation(World, DecalSettings.Material, DecalSettings.Size, ProjectileEndLocation,
-			ShotResult.ImpactNormal.ToOrientationRotator());
-		if (IsValid(DecalComponent))
-		{
-			DecalComponent->SetFadeOut(DecalSettings.LifeTime, DecalSettings.FadeOutTime);
-			DecalComponent->SetFadeScreenSize(0.0001f);
-		}
+		SpawnBulletHole(ShotResult);
 	}
 
 	if (bDrawDebugEnabled)
@@ -69,6 +69,70 @@ void UWeaponBarrelComponent::Shoot(const FVector& ViewLocation, const FVector& D
 
 	UNiagaraComponent* TraceFXComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), TraceFX, ProjectileStartLocation, GetComponentRotation());
 	TraceFXComponent->SetVectorParameter(FXParamTraceEnd, ProjectileEndLocation);
+
+	return bHit;
+}
+
+bool UWeaponBarrelComponent::ShootProjectile(const FVector& ViewLocation, const FVector& ViewDirection,
+	AController* ShooterController)
+{
+	CachedShooterController = ShooterController;
+	// ??
+	FVector ShootDirection = (ViewLocation + ViewDirection * Range) - GetComponentLocation();
+	
+	AGCProjectile* CurrentProjectile = GetWorld()->SpawnActor<AGCProjectile>(ProjectileClass, GetComponentLocation(), FRotator::ZeroRotator);
+	FHitResult TraceResult;
+	const FVector TraceEnd = ViewLocation + ViewDirection * Range;
+	bool bHit = GetWorld()->LineTraceSingleByChannel(TraceResult, ViewLocation, TraceEnd, ECC_Visibility);
+	ShootDirection = bHit || TraceResult.bBlockingHit
+		? (TraceResult.ImpactPoint - CurrentProjectile->GetActorLocation()).GetSafeNormal()
+		: (TraceEnd - CurrentProjectile->GetActorLocation()).GetSafeNormal();
+	CurrentProjectile->SetActorRotation(ShootDirection.ToOrientationRotator());
+	CurrentProjectile->ProjectileHitEvent.BindUObject(this, &UWeaponBarrelComponent::OnProjectileHit);
+	// FVector ViewUpVector = ViewRotation.RotateVector(FVector::UpVector);
+	// LaunchDirection = LaunchDirection + FMath::Tan(FMath::DegreesToRadians(ThrowAngle)) * ViewUpVector;
+	
+	CurrentProjectile->LaunchProjectile(ShootDirection.GetSafeNormal(), GetOwner()->GetVelocity().Size() + ProjectileSpeed, ShooterController);
+	return true;
+}
+
+void UWeaponBarrelComponent::OnProjectileHit(const FHitResult& HitResult, const FVector& Direction)
+{
+	if (CachedShooterController.IsValid())
+	{
+		ApplyDamage(HitResult, Direction, CachedShooterController.Get());
+	}
+	
+	SpawnBulletHole(HitResult);
+}
+
+void UWeaponBarrelComponent::ApplyDamage(const FHitResult& ShotResult, const FVector& Direction, AController* ShooterController) const
+{
+	AActor* HitActor = ShotResult.GetActor();
+	// Perhaps its better to use squared distance
+	float Damage = IsValid(DamageFalloffDiagram)
+		? DamageFalloffDiagram->GetFloatValue(ShotResult.Distance / Range) * InitialDamage
+		: InitialDamage;
+		
+	if (IsValid(HitActor))
+	{
+		FPointDamageEvent DamageEvent;
+		DamageEvent.HitInfo = ShotResult;
+		DamageEvent.ShotDirection = Direction;
+		DamageEvent.DamageTypeClass = DamageTypeClass;
+		HitActor->TakeDamage(Damage, DamageEvent, ShooterController, GetOwner());	
+	}
+}
+
+void UWeaponBarrelComponent::SpawnBulletHole(const FHitResult& HitResult)
+{
+	UDecalComponent* DecalComponent = UGameplayStatics::SpawnDecalAtLocation(GetWorld(), DecalSettings.Material, DecalSettings.Size, HitResult.ImpactPoint,
+																			HitResult.ImpactNormal.ToOrientationRotator());
+	if (IsValid(DecalComponent))
+	{
+		DecalComponent->SetFadeOut(DecalSettings.LifeTime, DecalSettings.FadeOutTime);
+		DecalComponent->SetFadeScreenSize(0.0001f);
+	}
 }
 
 void UWeaponBarrelComponent::FinalizeShot() const

@@ -9,11 +9,7 @@
 void UAnimNotify_ReloadShellInserted::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 {
 	Super::Notify(MeshComp, Animation);
-	AGCBaseCharacter* Character = Cast<AGCBaseCharacter>(MeshComp->GetOwner());
-	if (!IsValid(Character))
-	{
-		return;
-	}
-
-	Character->GetEquipmentComponent()->ReloadInsertShells(ShellsInsertedAtOnce);
+	auto Character = GetCharacter(MeshComp->GetOwner());
+	if (Character)
+		Character->GetEquipmentComponent()->ReloadInsertShells(ShellsInsertedAtOnce);
 }

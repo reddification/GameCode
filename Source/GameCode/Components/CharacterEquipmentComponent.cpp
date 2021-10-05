@@ -1,8 +1,9 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "Components/CharacterEquipmentComponent.h"
+
+#include "DrawDebugHelpers.h"
+#include "Actors/Equipment/Throwables/ThrowableItem.h"
 #include "Actors/Equipment/Weapons/RangeWeaponItem.h"
+#include "Actors/Projectiles/GCProjectile.h"
 #include "Characters/GCBaseCharacter.h"
 #include "Data/ReloadData.h"
 
@@ -17,28 +18,55 @@ void UCharacterEquipmentComponent::BeginPlay()
 void UCharacterEquipmentComponent::CreateLoadout()
 {
 	Loadout.AddZeroed((uint32)EEquipmentSlot::MAX);
-	FActorSpawnParameters ActorSpawnParameters;
-	ActorSpawnParameters.Owner = GetOwner();
+	Throwables.AddZeroed((uint32)EThrowableType::MAX);
+	
 	for (const TPair<EEquipmentSlot, TSubclassOf<ARangeWeaponItem>>& LoadoutSlot : InitialLoadoutTypes)
 	{
-		if (!IsValid(LoadoutSlot.Value)) continue;
-		ARangeWeaponItem* Weapon = GetWorld()->SpawnActor<ARangeWeaponItem>(LoadoutSlot.Value, ActorSpawnParameters);
-		Loadout[(uint32)LoadoutSlot.Key] = Weapon;
-		WeaponPickedUpEvent.ExecuteIfBound(Weapon, true);
+		if (IsValid(LoadoutSlot.Value))
+		{
+			PickUpWeapon(LoadoutSlot.Key, LoadoutSlot.Value);
+		}
 	}
-	
+
+	for (const TPair<EThrowableType, TSubclassOf<AThrowableItem>>& ThrowableSlot : InitialThrowables)
+	{
+		if (IsValid(ThrowableSlot.Value))
+		{
+			PickUpThrowable(ThrowableSlot.Key, ThrowableSlot.Value);
+		}
+	}
+
 	Pouch.AddZeroed((uint32)EAmmunitionType::MAX);
 	for (const TPair<EAmmunitionType, int32> AmmoLimit : AmmunitionLimits)
 	{
 		Pouch[(uint32)AmmoLimit.Key] = AmmoLimit.Value > 0 ? AmmoLimit.Value : 0;
 	}
 
-	EquipItem(EEquipmentSlot::SideArm);
+	EquipWeapon(EEquipmentSlot::SideArm);
+	EquipThrowable(EThrowableType::Grenade);
+}
+
+void UCharacterEquipmentComponent::PickUpWeapon(EEquipmentSlot Slot, const TSubclassOf<ARangeWeaponItem>& WeaponClass)
+{
+	FActorSpawnParameters ActorSpawnParameters;
+	ActorSpawnParameters.Owner = GetOwner();
+	ARangeWeaponItem* Weapon = GetWorld()->SpawnActor<ARangeWeaponItem>(WeaponClass, ActorSpawnParameters);
+	Loadout[(uint32)Slot] = Weapon;
+	WeaponPickedUpEvent.ExecuteIfBound(Weapon, true);
+}
+
+void UCharacterEquipmentComponent::PickUpThrowable(EThrowableType ThrowableType, const TSubclassOf<AThrowableItem>& ThrowableClass)
+{
+	FActorSpawnParameters ActorSpawnParameters;
+	ActorSpawnParameters.Owner = GetOwner();
+	AThrowableItem* Throwable = GetWorld()->SpawnActor<AThrowableItem>(ThrowableClass, ActorSpawnParameters);
+	Throwable->AttachToComponent(CharacterOwner->GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, ThrowablesPouchSocket);
+	Throwables[(uint32)ThrowableType] = Throwable;
 }
 
 #pragma region CHANGING EQUIPMENT
 
-void UCharacterEquipmentComponent::EquipItem(int delta)
+void UCharacterEquipmentComponent::EquipWeapon(int delta)
 {
 	if (bChangingEquipment)
 	{
@@ -54,15 +82,15 @@ void UCharacterEquipmentComponent::EquipItem(int delta)
 
 	if (NextSlotIndex != (uint8)EEquipmentSlot::None && NextSlotIndex != (uint8)EEquipmentSlot::MAX)
 	{
-		EquipItem((EEquipmentSlot)NextSlotIndex);
+		EquipWeapon((EEquipmentSlot)NextSlotIndex);
 	}
 }
 
 // TODO perhaps equipping a weapon should be done in 2 phases: first unequip current weapon and only then start another timer to equip another weapon;
 
-void UCharacterEquipmentComponent::EquipItem(EEquipmentSlot EquipmentSlot)
+void UCharacterEquipmentComponent::EquipWeapon(EEquipmentSlot EquipmentSlot)
 {
-	if (bChangingEquipment)
+	if (bChangingEquipment || !IsValid(Loadout[(uint32)EquipmentSlot]))
 	{
 		return;
 	}
@@ -90,32 +118,44 @@ void UCharacterEquipmentComponent::EquipItem(EEquipmentSlot EquipmentSlot)
 		    	FString::Printf(TEXT("Changing weapon without animation in %fs"), EquipmentDuration), true);
 		}
 		
-		GetWorld()->GetTimerManager().SetTimer(ChangingEquipmentTimer, this, &UCharacterEquipmentComponent::CompleteChangingItem, EquipmentDuration);
+		GetWorld()->GetTimerManager().SetTimer(ChangingEquipmentTimer, this, &UCharacterEquipmentComponent::OnWeaponsChanged, EquipmentDuration);
 	}
-	
 }
 
-void UCharacterEquipmentComponent::OnItemsChanged() const
+void UCharacterEquipmentComponent::EquipThrowable(EThrowableType ThrowableType)
 {
-	if (IsValid(ActiveEquippingData.OldItem))
+	AThrowableItem* Throwable = Throwables[(uint32)ThrowableType];
+	if (IsValid(Throwable))
 	{
-		WeaponEquippedChangedEvent.ExecuteIfBound(ActiveEquippingData.OldItem, false);
+		EquippedThrowableSlot = ThrowableType;
+		ActiveThrowable = Throwable;
+		Throwable->AttachToComponent(CharacterOwner->GetMesh(),  FAttachmentTransformRules::KeepRelativeTransform,
+			Throwable->GetCharacterUnequippedSocketName());
 	}
+}
 
-	WeaponEquippedChangedEvent.ExecuteIfBound(ActiveEquippingData.NewItem, true);
+void UCharacterEquipmentComponent::OnWeaponsChanged()
+{
+	if (WeaponEquippedChangedEvent.IsBound())
+	{
+		if (IsValid(ActiveEquippingData.OldItem))
+		{
+			WeaponEquippedChangedEvent.Broadcast(ActiveEquippingData.OldItem, false);
+		}
+		
+		WeaponEquippedChangedEvent.Broadcast(ActiveEquippingData.NewItem, true);
+	}
+	
+	OnAmmoChanged(ActiveEquippingData.NewItem->GetAmmo());
 	ActiveEquippingData.bNotified = true;
+	CompleteChangingWeapon();
 }
 
-void UCharacterEquipmentComponent::CompleteChangingItem()
+void UCharacterEquipmentComponent::CompleteChangingWeapon()
 {
-	if (!IsValid(ActiveEquippingData.Montage))
-	{
-		OnItemsChanged();
-	}
-	
 	EquippedWeapon = ActiveEquippingData.NewItem;
+	PreviousEquippedSlot = EquippedSlot;
 	EquippedSlot = ActiveEquippingData.EquipmentSlot;
-	OnAmmoChanged(EquippedWeapon->GetAmmo());
 	// Could have added another event OnChangingWeaponsCompleted just to invoke this but there are so many events already I'm starting to be concerned
 	CharacterOwner->UpdateStrafingControls();
 	bChangingEquipment = false;
@@ -256,6 +296,87 @@ void UCharacterEquipmentComponent::ReloadInsertShells(uint8 ShellsInsertedAtOnce
 }
 
 #pragma endregion RELOAD
+
+#pragma region THROWING
+
+bool UCharacterEquipmentComponent::TryThrow()
+{
+	if (ActiveThrowable.IsValid() && !bThrowing)
+	{
+		bThrowing = true;
+		UAnimMontage* ThrowMontage = ActiveThrowable->GetThrowMontage();
+		if (IsValid(ThrowMontage))
+		{
+			const float PlayRate = ThrowMontage->GetPlayLength() / ActiveThrowable->GetThrowDuration();
+			EquippedWeapon->AttachToComponent(CharacterOwner->GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, SecondaryHandSocket);
+			CharacterOwner->PlayAnimMontage(ThrowMontage, PlayRate);	
+		}
+		else
+		{
+			GetWorld()->GetTimerManager().SetTimer(ThrowTimer, this, &UCharacterEquipmentComponent::ReleaseThrowableItem,
+				ActiveThrowable->GetThrowDuration());
+		}
+		
+		return true;
+	}
+
+	return false;
+}
+
+void UCharacterEquipmentComponent::GrabThrowableItem()
+{
+	if (!bThrowing)
+	{
+		return;
+	}
+	
+	AGCProjectile* CurrentProjectile = ActiveThrowable->SpawnProjectile();
+	CurrentProjectile->AttachToComponent(CharacterOwner->GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, ThrowableHandSocket);
+}
+
+void UCharacterEquipmentComponent::InterruptThrowingItem()
+{
+	if (!bThrowing || !ActiveThrowable.IsValid())
+	{
+		return;
+	}
+	
+	if (ActiveThrowable->GetThrowMontage())
+	{
+		CharacterOwner->StopAnimMontage(ActiveThrowable->GetThrowMontage());
+	}
+	
+	GetWorld()->GetTimerManager().ClearTimer(ThrowTimer);
+	ActiveThrowable->DropProjectile(CharacterOwner->GetController());
+	bThrowing = false;
+	if (IsValid(EquippedWeapon))
+	{
+		EquippedWeapon->AttachToComponent(CharacterOwner->GetMesh(), FAttachmentTransformRules::KeepRelativeTransform,
+			EquippedWeapon->GetCharacterEquippedSocketName());
+	}
+}
+
+void UCharacterEquipmentComponent::ActivateThrowableItem() const
+{
+	if (ActiveThrowable.IsValid())
+	{
+		ActiveThrowable->Activate(CharacterOwner->GetController());
+	}
+}
+
+void UCharacterEquipmentComponent::ReleaseThrowableItem()
+{
+	if (!bThrowing || !ActiveThrowable.IsValid())
+	{
+		return;
+	}
+
+	ActiveThrowable->Throw(CharacterOwner->GetController());
+	bThrowing = false;
+	EquippedWeapon->AttachToComponent(CharacterOwner->GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, EquippedWeapon->GetCharacterEquippedSocketName());
+}
+
+#pragma endregion THROWING
 
 EEquippableItemType UCharacterEquipmentComponent::GetEquippedItemType() const
 {

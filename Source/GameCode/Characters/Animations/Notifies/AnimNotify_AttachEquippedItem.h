@@ -3,14 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Animation/AnimNotifies/AnimNotify.h"
+#include "GCAnimNotify.h"
 #include "AnimNotify_AttachEquippedItem.generated.h"
 
-/**
- * 
- */
 UCLASS()
-class GAMECODE_API UAnimNotify_AttachEquippedItem : public UAnimNotify
+class GAMECODE_API UAnimNotify_AttachEquippedItem : public UGCAnimNotify
 {
 	GENERATED_BODY()
 

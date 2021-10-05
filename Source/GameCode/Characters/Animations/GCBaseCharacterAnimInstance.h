@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Animation/AnimInstance.h"
-#include "Data/EquippableItemType.h"
+#include "Data/EquipmentTypes.h"
 #include "GameCode/Data/Side.h"
 #include "GCBaseCharacterAnimInstance.generated.h"
 

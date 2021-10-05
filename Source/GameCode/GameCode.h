@@ -18,6 +18,7 @@ const FName DebugCategoryRangeWeapons = FName("RangeWeapons");
 const FName ProfilePawn = FName("Pawn");
 const FName ProfileRagdoll = FName("Ragdoll");
 const FName ProfileInteractionVolume = FName("PawnInteractionVolume");
+const FName ProfileProjectile = FName("Projectile");
 
 // TODO move it somewhere to be configurable?
 const FName SocketPistol = FName("hand_r_pistol_socket"); 

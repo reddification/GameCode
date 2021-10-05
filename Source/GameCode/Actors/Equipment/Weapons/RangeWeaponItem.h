@@ -1,10 +1,9 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Actors/CommonDelegates.h"
 #include "Actors/Equipment/EquipableItem.h"
+#include "Characters/GCBaseCharacter.h"
 #include "Data/EquipmentTypes.h"
 #include "RangeWeaponItem.generated.h"
 
@@ -44,6 +43,7 @@ public:
 	FTransform GetForegripTransform() const;
 	EReloadType GetReloadType() const { return ReloadType; }
 	USkeletalMeshComponent* GetMesh() { return WeaponMeshComponent; }
+	EReticleType GetAimReticleType() const {return AimReticleType; }
 
 	mutable FShootEvent ShootEvent;
 	mutable FAmmoChangedEvent AmmoChangedEvent;
@@ -54,13 +54,16 @@ public:
 	float GetAimTurnModifier() const { return AimTurnModifier; }
 	float GetAimLookUpModifier() const { return AimLookUpModifier; }
 
-
 	int32 GetAmmo() const { return Ammo; }
 	void SetAmmo(int32 NewAmmo);
 	int32 GetClipCapacity() const { return ClipCapacity; }
 	EAmmunitionType GetAmmunitionType() const { return AmmunitionType; }
 
 	float GetReloadDuration() const { return ReloadDuration; }
+
+	virtual EReticleType GetReticleType() const override;
+
+	const class UCameraComponent* GetScopeCameraComponent() const { return ScopeCameraComponent; }
 	
 protected:
 	virtual void BeginPlay() override;
@@ -71,6 +74,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	class UWeaponBarrelComponent* WeaponBarrelComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	class UCameraComponent* ScopeCameraComponent;
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	FName MuzzleSocketName = "muzzle_socket";
 
@@ -82,10 +88,10 @@ protected:
 	EWeaponFireMode FireMode = EWeaponFireMode::FullAuto;
 
 	// bullet spread half angle in degrees
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin = 1.f, UIMin = 1.f, ClampMax = 5.f, UIMax = 5.f))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin = 1.f, UIMin = 1.f, ClampMax = 10.f, UIMax = 10.f))
 	float SpreadAngle = 1.f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin = 1.f, UIMin = 1.f, ClampMax = 5.f, UIMax = 5.f))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin = 0.f, UIMin = 0.f, ClampMax = 5.f, UIMax = 5.f))
 	float AimSpreadAngle = 1.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta=(ClampMin = 1.f, UIMin = 1.f))
@@ -126,6 +132,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	EReloadType ReloadType = EReloadType::FullClip;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	EReticleType AimReticleType = EReticleType::Crosshair;
 	
 private:
 	bool bAiming = false;
