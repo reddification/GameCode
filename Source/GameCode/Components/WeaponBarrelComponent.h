@@ -6,6 +6,7 @@
 #include "GCDebugSubsystem.h"
 #include "Components/SceneComponent.h"
 #include "Data/DecalSettings.h"
+#include "Data/FireModeSettings.h"
 #include "WeaponBarrelComponent.generated.h"
 
 class UNiagaraSystem;
@@ -27,6 +28,11 @@ public:
 	void ApplyDamage(const FHitResult& ShotResult, const FVector& Direction, AController* ShooterController) const;
 	void FinalizeShot() const;
 
+	int32 GetAmmo() const { return Ammo; }
+	void SetAmmo(int32 NewValue) { Ammo = NewValue; }
+	
+	const FFireModeSettings& GetFireModeSettings() const { return FireModeSettings; }
+	
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float Range = 5000.f;
@@ -59,6 +65,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (ClampMin=200.f, UIMin = 200.f, EditCondition = "HitRegistrationType == EHitRegistrationType::Projectile"))
 	float ProjectileSpeed = 2000.f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	FFireModeSettings FireModeSettings;
+	
 private:
 
 	bool ShootHitScan(const FVector& ViewLocation, const FVector& Direction, AController* ShooterController);
@@ -66,6 +75,8 @@ private:
 	void SpawnBulletHole(const FHitResult& HitResult);
 	void OnProjectileHit(const FHitResult& HitResult, const FVector& Direction);
 	TWeakObjectPtr<AController> CachedShooterController = nullptr;
+
+	int32 Ammo = 0;
 	
 	#if UE_BUILD_DEVELOPMENT || UE_BUILD_DEBUG
 	const UGCDebugSubsystem* GetDebugSubsystem() const;

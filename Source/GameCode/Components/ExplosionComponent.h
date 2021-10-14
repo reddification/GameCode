@@ -38,6 +38,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	UParticleSystem* ExplosionVFX;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	class USoundCue* ExplosionSFX;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TSubclassOf<UDamageType> DamageTypeClass;

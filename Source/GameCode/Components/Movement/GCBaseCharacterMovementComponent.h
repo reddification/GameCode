@@ -52,13 +52,14 @@ public:
 	bool IsProning() const { return CurrentPosture == EPosture::Proning; } 
 
 	virtual float GetMaxSpeed() const override;
-	void TryProne();
-	void TryStandUp();
-	void TryCrouch();
+	void RequestProne();
+	void RequestStandUp();
+	void RequestCrouch();
 	virtual void Crouch(bool bClientSimulation = false) override;
 	virtual void UnCrouch(bool bClientSimulation = false) override;
 	void SetAimingSpeed(float AimMaxSpeed) {CurrentAimSpeed = AimMaxSpeed; }
-
+	void ResetAimingSpeed() { CurrentAimSpeed = DefaultAimingSpeed; }
+	
 	FCrouchedOrProned CrouchedOrProned;
 	FWokeUp WokeUp;
 	FSlidingStateChangedEvent SlidingStateChangedEvent;
@@ -124,6 +125,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement|Speed", meta=(ClampMin=0, UIMin=0))
 	float SprintSpeed = 1200.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement|Speed", meta=(ClampMin=0, UIMin=0))
+	float DefaultAimingSpeed = 300.f;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement|Speed", meta=(ClampMin=0, UIMin=0))
 	float OutOfStaminaSpeed = 200.f;
 	
@@ -198,7 +202,6 @@ private:
 	
 	void Prone();
 	void UnProne();
-	bool CanUnprone();
 	bool CanProne();
 	
 	bool TryCrouchOrProne(float NewCapsuleHalfHeight, float NewCapsuleRadius, float& ScaledHalfHeightAdjust);

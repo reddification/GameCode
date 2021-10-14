@@ -1,10 +1,8 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "Components/ExplosionComponent.h"
 
 #include "Kismet/GameplayStatics.h"
 #include "Particles/ParticleSystem.h"
+#include "Sound/SoundCue.h"
 
 void UExplosionComponent::Explode(AController* Controller)
 {
@@ -17,6 +15,11 @@ void UExplosionComponent::Explode(AController* Controller)
 	if (IsValid(ExplosionVFX))
 	{
 		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), ExplosionVFX, GetComponentLocation());
+	}
+	
+	if (IsValid(ExplosionSFX))
+	{
+		UGameplayStatics::PlaySoundAtLocation(GetWorld(), ExplosionSFX, GetComponentLocation());
 	}
 	
 	if (ExplosionEvent.IsBound())

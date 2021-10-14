@@ -18,15 +18,17 @@ public:
 	AExplosiveProjectile();
 
 	virtual void Activate(AController* ThrowerController) override;
-	
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	class UExplosionComponent* ExplosionComponent;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float DetonationTime = 3.f;
-
+	
 	virtual void OnProjectileLaunched() override;
+
+	virtual void DestroyOnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit) override;
 	
 private:
 	FTimerHandle DetonationTimer;

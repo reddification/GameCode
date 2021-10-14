@@ -20,7 +20,7 @@ public:
 	AGCProjectile();
 
 	mutable FProjectileHitEvent ProjectileHitEvent;
-	
+
 	void LaunchProjectile(FVector Direction, float Speed, AController* ThrowerController);
 	
 	virtual void Activate(AController* ThrowerController) { CachedThrowerController = ThrowerController; }
@@ -30,7 +30,7 @@ protected:
 	virtual void BeginPlay() override;
 	
 	UFUNCTION()
-	virtual void OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+	virtual void DestroyOnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	    FVector NormalImpulse, const FHitResult& Hit);
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
@@ -39,7 +39,26 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	UProjectileMovementComponent* ProjectileMovementComponent;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	class URotatingMovementComponent* RotatingMovementComponent;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	bool bDestroyOnHit = false;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	bool bRotate = false;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	FRotator BaseRotationRate;
+	
 	virtual void OnProjectileLaunched() {}
 
 	TWeakObjectPtr<AController> CachedThrowerController;
+
+private:
+	UFUNCTION()
+	void OnProjectileStopped(const FHitResult& ImpactResult);
+
+	UFUNCTION()
+	void OnProjectileBounced(const FHitResult& ImpactResult, const FVector& ImpactVelocity);
 };

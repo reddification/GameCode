@@ -7,14 +7,16 @@
 #include "Camera/CameraComponent.h"
 #include "Characters/GCBaseCharacter.h"
 #include "Components/WeaponBarrelComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundCue.h"
 
 ARangeWeaponItem::ARangeWeaponItem()
 {
 	WeaponMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Weapon Mesh"));
 	WeaponMeshComponent->SetupAttachment(RootComponent);
 
-	WeaponBarrelComponent = CreateDefaultSubobject<UWeaponBarrelComponent>(TEXT("Barrel"));
-	WeaponBarrelComponent->SetupAttachment(WeaponMeshComponent, MuzzleSocketName);
+	PrimaryWeaponBarrelComponent = CreateDefaultSubobject<UWeaponBarrelComponent>(TEXT("PrimaryBarrel"));
+	PrimaryWeaponBarrelComponent->SetupAttachment(WeaponMeshComponent, MuzzleSocketName);
 
 	ScopeCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("Scope"));
 	ScopeCameraComponent->SetupAttachment(WeaponMeshComponent);
@@ -24,13 +26,25 @@ ARangeWeaponItem::ARangeWeaponItem()
 
 EReticleType ARangeWeaponItem::GetReticleType() const
 {
-	return bAiming ? AimReticleType : ReticleType;
+	return bAiming ? ActiveWeaponBarrel->GetFireModeSettings().AimReticleType : ReticleType;
 }
 
 void ARangeWeaponItem::BeginPlay()
 {
 	Super::BeginPlay();
-	SetAmmo(ClipCapacity);
+
+	TInlineComponentArray<UWeaponBarrelComponent*> BarrelComponents;
+	GetComponents<UWeaponBarrelComponent>(BarrelComponents);
+	for (auto BarrelComponent : BarrelComponents)
+	{
+		UWeaponBarrelComponent* Barrel = StaticCast<UWeaponBarrelComponent*>(BarrelComponent);
+		Barrel->SetAmmo(Barrel->GetFireModeSettings().ClipCapacity);
+		Barrels.Add(Barrel);
+	}
+	
+	ActiveBarrelIndex = 0;
+	ActiveWeaponBarrel = Barrels[ActiveBarrelIndex];
+	AmmoChangedEvent.ExecuteIfBound(ActiveWeaponBarrel->GetAmmo());
 }
 
 #pragma region SHOOT
@@ -45,8 +59,7 @@ bool ARangeWeaponItem::TryStartFiring(AController* ShooterController)
 	
 	CachedShooterController = ShooterController;
 	bFiring = true;
-	Shoot();
-	return true;
+	return Shoot();
 }
 
 void ARangeWeaponItem::StopFiring()
@@ -54,8 +67,9 @@ void ARangeWeaponItem::StopFiring()
 	bFiring = false;
 }
 
-void ARangeWeaponItem::Shoot()
+bool ARangeWeaponItem::Shoot()
 {
+	int32 Ammo = GetAmmo();
 	if (Ammo <= 0)
 	{
 		if (!bReloading)
@@ -63,27 +77,30 @@ void ARangeWeaponItem::Shoot()
 			OutOfAmmoEvent.ExecuteIfBound();
 			StopFiring();
 		}
-		return;
+		
+		return false;
 	}
 
 	FVector ViewLocation;
 	FRotator ViewRotation;
 	CachedShooterController->GetPlayerViewPoint(ViewLocation, ViewRotation);
 	FVector ViewDirection = ViewRotation.Vector();
-	for (auto i = 0; i < BulletsPerShot; i++)
+	const FFireModeSettings& FireModeSettings = ActiveWeaponBarrel->GetFireModeSettings();
+	for (auto i = 0; i < FireModeSettings.BulletsPerShot; i++)
 	{
-		WeaponBarrelComponent->Shoot(ViewLocation, ViewDirection + GetBulletSpreadOffset(ViewRotation), CachedShooterController);
+		ActiveWeaponBarrel->Shoot(ViewLocation, ViewDirection + GetBulletSpreadOffset(ViewRotation), CachedShooterController);
 	}
 
 	SetAmmo(Ammo - 1);
-	PlayAnimMontage(WeaponShootMontage);
-	WeaponBarrelComponent->FinalizeShot();
+	PlayAnimMontage(FireModeSettings.WeaponShootMontage);
+	ActiveWeaponBarrel->FinalizeShot();
 	if (ShootEvent.IsBound())
 	{
-		ShootEvent.Broadcast(CharacterShootMontage);
+		ShootEvent.Broadcast(FireModeSettings.CharacterShootMontage);
 	}
 
 	GetWorld()->GetTimerManager().SetTimer(ShootTimer, this, &ARangeWeaponItem::ResetShot, GetShootTimerInterval(), false);
+	return true;
 }
 
 void ARangeWeaponItem::ResetShot()
@@ -93,7 +110,7 @@ void ARangeWeaponItem::ResetShot()
 		return;
 	}
 
-	switch (FireMode)
+	switch (ActiveWeaponBarrel->GetFireModeSettings().FireMode)
 	{
 		case EWeaponFireMode::Single:
 			StopFiring();
@@ -125,17 +142,23 @@ FVector ARangeWeaponItem::GetBulletSpreadOffset(const FRotator& ShotOrientation)
 
 float ARangeWeaponItem::GetBulletSpreadAngleRad() const
 {
-	return FMath::DegreesToRadians(bAiming ? AimSpreadAngle : SpreadAngle); 
+	const FFireModeSettings& FireModeSettings = ActiveWeaponBarrel->GetFireModeSettings();
+	return FMath::DegreesToRadians(bAiming ? FireModeSettings.AimSpreadAngle : FireModeSettings.SpreadAngle); 
 }
-
 
 #pragma endregion SHOOT
 
 #pragma region AIM
 
-void ARangeWeaponItem::StartAiming()
+bool ARangeWeaponItem::StartAiming()
 {
-	bAiming = true;
+	if (CanAim() && !bAiming)
+	{
+		bAiming = true;
+		return true;
+	}
+
+	return false;
 }
 
 void ARangeWeaponItem::StopAiming()
@@ -150,7 +173,7 @@ void ARangeWeaponItem::StopAiming()
 void ARangeWeaponItem::StartReloading(float DesiredReloadDuration)
 {
 	bReloading = true;
-	PlayAnimMontage(WeaponReloadMontage, DesiredReloadDuration);
+	PlayAnimMontage(ActiveWeaponBarrel->GetFireModeSettings().WeaponReloadMontage, DesiredReloadDuration);
 }
 
 void ARangeWeaponItem::StopReloading(bool bInterrupted)
@@ -158,16 +181,38 @@ void ARangeWeaponItem::StopReloading(bool bInterrupted)
 	bReloading = false;
 	if (bInterrupted)
 	{
-		WeaponMeshComponent->GetAnimInstance()->Montage_Stop(0.0f, WeaponReloadMontage);
+		WeaponMeshComponent->GetAnimInstance()->Montage_Stop(0.0f, ActiveWeaponBarrel->GetFireModeSettings().WeaponReloadMontage);
 	}
 }
 
 #pragma endregion RELOAD
 
+#pragma region FIRE MODES
+
+void ARangeWeaponItem::StartTogglingFireMode()
+{
+	bChangingFireMode = true;
+}
+
+void ARangeWeaponItem::CompleteTogglingFireMode()
+{
+	ActiveBarrelIndex = (ActiveBarrelIndex + 1) % Barrels.Num();
+	ActiveWeaponBarrel = Barrels[ActiveBarrelIndex];
+	AmmoChangedEvent.ExecuteIfBound(ActiveWeaponBarrel->GetAmmo());
+	bChangingFireMode = false;
+}
+
+const FFireModeSettings& ARangeWeaponItem::GetNextFireModeSettings() const
+{
+	UWeaponBarrelComponent* NextBarrel = Barrels[(ActiveBarrelIndex + 1) % Barrels.Num()];
+	return NextBarrel->GetFireModeSettings();
+}
+
+#pragma endregion FIRE MODES
 
 void ARangeWeaponItem::SetAmmo(int32 NewAmmo)
 {
-	Ammo = NewAmmo;
+	ActiveWeaponBarrel->SetAmmo(NewAmmo);
 	AmmoChangedEvent.ExecuteIfBound(NewAmmo);
 }
 

@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Actors/CommonDelegates.h"
-#include "Actors/Equipment/Weapons/RangeWeaponItem.h"
+#include "Data/CharacterTypes.h"
 #include "Data/Movement/MantlingSettings.h"
 #include "Data/Movement/ZiplineParams.h"
 
@@ -10,10 +10,11 @@
 #include "GameCode/Data/MontagePlayResult.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
 #include "GameFramework/Character.h"
+#include "Data/UserInterfaceTypes.h"
 #include "GCBaseCharacter.generated.h"
 
-DECLARE_DELEGATE_ThreeParams(FAimingStateChangedEvent, bool bAiming, EReticleType NewReticleType, class ARangeWeaponItem* Weapon);
-
+class AEquippableItem;
+class ARangeWeaponItem;
 class UGCBaseCharacterMovementComponent;
 class UInverseKinematicsComponent;
 class UCharacterEquipmentComponent;
@@ -24,8 +25,9 @@ UCLASS(Abstract, NotBlueprintable)
 class GAMECODE_API AGCBaseCharacter : public ACharacter
 {
 	GENERATED_BODY()
-
+// ))
 friend UCharacterEquipmentComponent;
+friend UGCBaseCharacterMovementComponent;
 	
 public:
 	AGCBaseCharacter(const FObjectInitializer& ObjectInitializer);
@@ -48,7 +50,6 @@ public:
 	const UGCBaseCharacterMovementComponent* GetGCMovementComponent () const { return GCMovementComponent; }
 	const UCharacterAttributesComponent* GetCharacterAttributesComponent() const { return CharacterAttributesComponent; }
 
-	mutable FAimingStateChangedEvent AimingStateChangedEvent;
 	mutable FAmmoChangedEvent AmmoChangedEvent;
 	
 #pragma region INPUT
@@ -83,12 +84,15 @@ public:
 	void StartAiming();
 	void StopAiming();
 	void StartReloading();
+	void ToggleFireMode();
 
-	void PickWeapon(int Delta);
+	void ChangeWeapon(int WeaponIndexDelta);
 	void ThrowItem();
 
-	bool CanAim() const;
-	bool IsAiming() const { return bAiming; }
+	void StartPrimaryMeleeAttack();
+	void StopPrimaryMeleeAttack();
+	void StartSecondaryMeleeAttack();
+	void StopSecondaryMeleeAttack();
 	
 #pragma endregion 
 	
@@ -122,6 +126,17 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
 	UCharacterEquipmentComponent* CharacterEquipmentComponent;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
+	TArray<UAnimMontage*> HitReactionMontages;
+	
+	// List of actions that block key action
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Action filters")
+	TMap<ECharacterAction, FCharacterActions> ActionBlockers;
+
+	// List of actions that are interrupted by key action
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Action filters")
+	TMap<ECharacterAction, FCharacterActions> ActionInterrupters;
 	
 	virtual bool CanSprint() const;
 	void TryStartSprinting();
@@ -216,15 +231,13 @@ protected:
 	void UpdateStrafingControls();
 	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode) override;
 	
-	void OnWeaponEquippedChanged(class ARangeWeaponItem* EquippedWeapon, bool bEquipped);
-	virtual void OnWeaponPickedUpChanged(class ARangeWeaponItem* EquippedWeapon, bool bPickedUp);
-
-	bool bAiming = false;
-
-	void InterruptOtherActions();
 	bool CanReload() const;
 
 	float PlayAnimMontageWithDuration(UAnimMontage* Montage, float DesiredDuration);
+
+	UFUNCTION()
+	void ReactToDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType,
+		AController* InstigatedBy, AActor* DamageCauser);
 	
 private:
 	bool bSprintRequested = false;
@@ -234,8 +247,6 @@ private:
 	FZiplineParams GetZipliningParameters(const AZipline* Zipline) const;
 	void UpdateSuffocatingState();
 
-	UAnimMontage* ActiveReloadMontage = nullptr;
-	
 	bool TryStartInteracting();
 	void TryStopInteracting();
 	void ResetInteraction();
@@ -245,12 +256,11 @@ private:
 	TArray<const AInteractiveActor*, TInlineAllocator<8>> InteractiveActors;
 
 	bool CanSlide() const { return GCMovementComponent->IsSprinting(); }
-
+	
 	float FallApexWorldZ = 0.f;
 
 	void EnableRagdoll() const;
 
-	void OnShot(UAnimMontage* AnimMontage);
 	void OnChangingEquippedItemStarted(UAnimMontage* AnimMontage, float Duration);
 	void ChangeMeshOffset(float HalfHeightAdjust);
 
@@ -258,4 +268,11 @@ private:
 	void OnWallrunBegin(ESide WallrunSide);
 
 	void SetStrafingControlsState(bool bStrafing);
+	void OnAimStateChanged(bool bAiming, ARangeWeaponItem* Weapon);
+
+	TSet<ECharacterAction> ActiveActions;
+
+	bool CanStartAction(ECharacterAction Action);
+	void OnActionStarted(ECharacterAction Action);
+	void OnActionEnded(ECharacterAction Action);
 };

@@ -2,12 +2,12 @@
 
 #include "EquipmentTypes.h"
 
-class ARangeWeaponItem;
+class AEquippableItem;
 
 struct FEquipmentData
 {
-	ARangeWeaponItem* OldItem;
-	ARangeWeaponItem* NewItem;
+	AEquippableItem* OldItem;
+	AEquippableItem* NewItem;
 	EEquipmentSlot EquipmentSlot;
 	class UAnimMontage* Montage;
 	bool bNotified;

@@ -3,25 +3,34 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CharacterAttributesComponent.h"
 #include "Actors/CommonDelegates.h"
 #include "Components/ActorComponent.h"
 #include "Data/EquipmentData.h"
 #include "Data/EquipmentTypes.h"
-#include "Data/ReloadData.h"
+#include "Data/MeleeAttackData.h"
+#include "Data/UserInterfaceTypes.h"
 #include "CharacterEquipmentComponent.generated.h"
 
 // TODO too much logic in this component already. Perhaps move reload, throwables, shooting and meelee logic to a separate CombatComponent?
 
+class AEquippableItem;
 class ARangeWeaponItem;
+class AMeleeWeaponItem;
 class AThrowableItem;
-DECLARE_DELEGATE_TwoParams(FWeaponPickedUpEvent, ARangeWeaponItem* EquippedWeapon, bool bPickedUp)
-DECLARE_MULTICAST_DELEGATE_TwoParams(FWeaponEquippedChangedEvent, ARangeWeaponItem* EquippedWeapon, bool bEquipped)
-// DECLARE_MULTICAST_DELEGATE_OneParam(FThrowableEquipStateChangedEvent, AThrowableItem* Throwable); // remove before submit
+
+DECLARE_MULTICAST_DELEGATE_TwoParams(FWeaponEquippedEvent, const FText& Name, EReticleType Reticle)
+DECLARE_MULTICAST_DELEGATE(FWeaponUnequippedEvent);
 DECLARE_DELEGATE_TwoParams(FChangingEquippedItemStarted, UAnimMontage* Montage, float Duration)
+
+DECLARE_MULTICAST_DELEGATE_TwoParams(FAimingStateChangedEvent, bool bAiming, ARangeWeaponItem* Weapon)
+DECLARE_DELEGATE_OneParam(FAimingSpeedChangedEvent, float NewAimSpeed)
+DECLARE_DELEGATE(FAimingSpeedResetEvent)
+DECLARE_DELEGATE(FMeleeWeaponEquippedEvent)
 
 // TODO 2 unused elements?
 typedef TArray<int32, TInlineAllocator<(uint32)EAmmunitionType::MAX>> TAmmunitionArray;
-typedef TArray<ARangeWeaponItem*, TInlineAllocator<(uint32)EEquipmentSlot::MAX>> TLoadoutArray;
+typedef TArray<AEquippableItem*, TInlineAllocator<(uint32)EEquipmentSlot::MAX>> TLoadoutArray;
 typedef TArray<AThrowableItem*, TInlineAllocator<(uint32)EThrowableType::MAX>> TThrowablesArray;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -31,36 +40,66 @@ class GAMECODE_API UCharacterEquipmentComponent : public UActorComponent
 
 public:
 	EEquippableItemType GetEquippedItemType() const;
+	
+	void StartShooting(AController* Controller);
 	void StopFiring() const;
 
-	bool IsPreferStrafing() const { return GetEquippedItemType() != EEquippableItemType::None || bThrowing; }
+	bool IsPreferStrafing() const;
 
-	ARangeWeaponItem* GetCurrentRangeWeapon() const { return EquippedWeapon; }
-	FReloadData TryReload();
+	const ARangeWeaponItem* GetCurrentWeapon() const { return EquippedRangedWeapon; }
+	const AMeleeWeaponItem* GetCurrentMeleeWeapon() const { return EquippedMeleeWeapon; }
+
+	void TryReload();
 	void InterruptReloading();
 	bool IsAutoReload() const { return bAutoReload; }
+	
+	void StartPrimaryMeleeAttack(AController* AttackerController);
+	void StopPrimaryMeleeAttack();
+	void StartHeavyMeleeAttack(AController* AttackerController);
+	void StopHeavyMeleeAttack();
+	void StartMeleeAttack(EMeleeAttackType AttackType, AController* AttackerController);
+	void StopMeleeAttack(EMeleeAttackType AttackType);
+	void OnMeleeAttackCompleted();
 
-	mutable FWeaponPickedUpEvent WeaponPickedUpEvent;
-	mutable FWeaponEquippedChangedEvent WeaponEquippedChangedEvent;
+	bool StartAiming();
+	void StopAiming();
+	bool IsAiming() const { return bAiming; }
+	
+	bool IsMeleeAttacking() const { return bMeleeAttack; }
+	void SetMeleeHitRegEnabled(bool bEnabled);
+
+	mutable FWeaponEquippedEvent WeaponEquippedEvent;
+	mutable FWeaponUnequippedEvent WeaponUnequippedEvent;
 	mutable FWeaponAmmoChangedEvent WeaponAmmoChangedEvent;
 	mutable FChangingEquippedItemStarted ChangingEquippedItemStarted;
-
+	mutable FThrowablesCountChanged ThrowablesCountChanged;
+	mutable FThrowableEquippedEvent ThrowableEquippedEvent;
+	mutable FAimingStateChangedEvent AimStateChangedEvent;
+	mutable FAimingSpeedChangedEvent AimingSpeedChangedEvent;
+	mutable FAimingSpeedResetEvent AimingSpeedResetEvent;
+	mutable FMeleeWeaponEquippedEvent MeleeWeaponEquippedEvent;
+	
 	void CreateLoadout();
 
-	void PickUpWeapon(EEquipmentSlot Slot, const TSubclassOf<ARangeWeaponItem>& WeaponClass);
+	void PickUpWeapon(EEquipmentSlot Slot, const TSubclassOf<AEquippableItem>& WeaponClass);
+	void DropItem();
+	void PickUpThrowable(EThrowableType ThrowableType, const TSubclassOf<AThrowableItem>& ThrowableClass);
 	void EquipWeapon(EEquipmentSlot EquipmentSlot);
 	void EquipThrowable(EThrowableType ThrowableType);
 
 	void OnWeaponsChanged();
 	void EquipWeapon(int delta);
 	void InterruptChangingEquipment();
+	bool CanReload();
 
 	void OnAmmoChanged(int32 ClipAmmo) const;
 	bool IsChangingEquipment() const { return bChangingEquipment; }
 
 	void ReloadInsertShells(uint8 ShellsInsertedAtOnce);
+	void StartTogglingFireMode();
+	void InterruptTogglingFireMode();
 
-	void PickUpThrowable(EThrowableType ThrowableType, const TSubclassOf<AThrowableItem>& ThrowableClass);
+	AEquippableItem* GetEquippedItem() const;
 	bool TryThrow();
 	void GrabThrowableItem();
 	void InterruptThrowingItem();
@@ -74,12 +113,12 @@ protected:
 	TMap<EAmmunitionType, int32> AmmunitionLimits;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Loadout")
-	TMap<EEquipmentSlot, TSubclassOf<ARangeWeaponItem>> InitialLoadoutTypes;
+	TMap<EEquipmentSlot, TSubclassOf<AEquippableItem>> InitialLoadoutTypes;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Loadout")
 	TMap<EThrowableType, TSubclassOf<AThrowableItem>> InitialThrowables;
 	
-	// The smaller this value the faster reloading goes
+	// The smaller this value the faster changing equipment goes
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Loadout")
 	float EquipDurationMultiplier = 1.f;
 
@@ -97,27 +136,31 @@ protected:
 	FName ReloadMontageEndSectionName = FName("EndReload");
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Sockets")
-	FName ThrowableHandSocket = FName("hand_r_throwable");
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Sockets")
 	FName SecondaryHandSocket = FName("hand_l_socket");
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Sockets")
 	FName ThrowablesPouchSocket = FName("throwables_pouch_socket");
+
+	// The smaller this value the faster melee attacks are
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Melee")
+	float MeleeDurationMultiplier = 1.f;
 	
 private:
 	// TODO TWeakObjectPtr too?
-	ARangeWeaponItem* EquippedWeapon = nullptr;
-	TWeakObjectPtr<AThrowableItem> ActiveThrowable = nullptr;
+	ARangeWeaponItem* EquippedRangedWeapon = nullptr;
+	AThrowableItem* ActiveThrowable = nullptr;
+	AMeleeWeaponItem* EquippedMeleeWeapon = nullptr;
 
 	EEquipmentSlot EquippedSlot = EEquipmentSlot::None;
 	EEquipmentSlot PreviousEquippedSlot = EEquipmentSlot::None;
 	EThrowableType EquippedThrowableSlot = EThrowableType::None;
+	
 	TWeakObjectPtr<class AGCBaseCharacter> CharacterOwner;
 
 	void CompleteReloading();
 	void CompleteChangingWeapon();
-	
+	void CompleteTogglingFireMode();
+
 	TAmmunitionArray Pouch;
 	TLoadoutArray Loadout;
 	TThrowablesArray Throwables;
@@ -125,10 +168,16 @@ private:
 	bool bReloading = false;
 	bool bChangingEquipment = false;
 	bool bThrowing = false;
+	bool bAiming = false;
+	bool bMeleeAttack = false;
 	
 	FEquipmentData ActiveEquippingData;
 		
 	FTimerHandle ReloadTimer;
 	FTimerHandle ChangingEquipmentTimer;
 	FTimerHandle ThrowTimer;
+	FTimerHandle ChangeFireModeTimer;
+	FTimerHandle MeleeAttackTimer;
+	
+	void OnShot(UAnimMontage* Montage);
 };

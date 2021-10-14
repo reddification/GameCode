@@ -3,6 +3,7 @@
 
 #include "CharacterAttributesComponent.h"
 
+#include "CharacterEquipmentComponent.h"
 #include "DrawDebugHelpers.h"
 #include "GameCode/Characters/GCBaseCharacter.h"
 #include "Kismet/GameplayStatics.h"
@@ -15,6 +16,9 @@ UCharacterAttributesComponent::UCharacterAttributesComponent()
 void UCharacterAttributesComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	AActor* Owner = GetOwner();
+	checkf(Owner->IsA<AGCBaseCharacter>(), TEXT("UCharacterAttributesComponent is designed only for AGCBaseCharacter"));
+	CharacterOwner = StaticCast<AGCBaseCharacter*>(Owner);
 	Health = MaxHealth;
 	Oxygen = MaxOxygen;
 	Stamina = MaxStamina;
@@ -131,7 +135,9 @@ bool UCharacterAttributesComponent::CanRestoreStamina() const
 
 bool UCharacterAttributesComponent::IsConsumingStamina() const
 {
-	return (MovementMode != EMovementMode::MOVE_Walking && MovementMode != EMovementMode::MOVE_NavWalking) || bSprinting;
+	return (MovementMode != EMovementMode::MOVE_Walking && MovementMode != EMovementMode::MOVE_NavWalking)
+		|| bSprinting
+		|| CharacterOwner->GetEquipmentComponent()->IsMeleeAttacking();
 }
 
 void UCharacterAttributesComponent::OnTakeAnyDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType,

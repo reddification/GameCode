@@ -38,6 +38,8 @@ public:
 
 	void OnJumped();
 
+	void ChangeStaminaValue(float StaminaModification);
+	
 	UFUNCTION()
 	void OnTakeAnyDamage(AActor* DamagedActor, float Damage, const class UDamageType* DamageType,
 		class AController* InstigatedBy, AActor* DamageCauser);
@@ -110,8 +112,7 @@ private:
 	bool IsConsumingStamina() const;
 	float GetStaminaConsumption() const;
 	void UpdateStamina(float DeltaTime);
-	void ChangeStaminaValue(float StaminaModification);
-
+	
 	void ChangeHealth(float Delta);
 	
 };
