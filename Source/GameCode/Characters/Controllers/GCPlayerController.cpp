@@ -1,8 +1,8 @@
 #include "GCPlayerController.h"
 
 #include "Actors/Equipment/Weapons/ThrowableItem.h"
-#include "Components/CharacterAttributesComponent.h"
-#include "Components/CharacterEquipmentComponent.h"
+#include "Components/Character/CharacterAttributesComponent.h"
+#include "Components/Character/CharacterEquipmentComponent.h"
 #include "Actors/Equipment/Weapons/RangeWeaponItem.h"
 #include "Components/NameplateComponent.h"
 #include "GameCode/Characters/GCBaseCharacter.h"

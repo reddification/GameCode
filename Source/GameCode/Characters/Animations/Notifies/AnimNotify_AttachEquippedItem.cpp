@@ -4,7 +4,7 @@
 #include "Characters/Animations/Notifies/AnimNotify_AttachEquippedItem.h"
 
 #include "Characters/GCBaseCharacter.h"
-#include "Components/CharacterEquipmentComponent.h"
+#include "Components/Character/CharacterEquipmentComponent.h"
 
 void UAnimNotify_AttachEquippedItem::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 {

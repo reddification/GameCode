@@ -2,7 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "WeaponBase.h"
-#include "Components/CharacterEquipmentComponent.h"
 #include "ThrowableItem.generated.h"
 
 class AGCProjectile;

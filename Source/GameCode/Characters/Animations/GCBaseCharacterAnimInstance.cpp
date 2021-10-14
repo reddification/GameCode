@@ -4,12 +4,11 @@
 #include "GCBaseCharacterAnimInstance.h"
 
 #include "Actors/Equipment/Weapons/RangeWeaponItem.h"
-#include "Camera/CameraComponent.h"
-#include "Components/CharacterEquipmentComponent.h"
+#include "Components/Character/CharacterEquipmentComponent.h"
 #include "Data/Movement/IKData.h"
 #include "GameCode/Characters/GCBaseCharacter.h"
-#include "GameCode/Components/CharacterAttributesComponent.h"
-#include "GameCode/Components/InverseKinematicsComponent.h"
+#include "GameCode/Components/Character/CharacterAttributesComponent.h"
+#include "GameCode/Components/Character/InverseKinematicsComponent.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
