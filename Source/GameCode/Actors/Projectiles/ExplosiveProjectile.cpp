@@ -1,6 +1,6 @@
 #include "Actors/Projectiles/ExplosiveProjectile.h"
 
-#include "Components/ExplosionComponent.h"
+#include "Components/Combat/ExplosionComponent.h"
 #include "Kismet/GameplayStatics.h"
 
 AExplosiveProjectile::AExplosiveProjectile()

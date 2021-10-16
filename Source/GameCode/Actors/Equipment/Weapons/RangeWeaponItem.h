@@ -3,8 +3,7 @@
 #include "CoreMinimal.h"
 #include "Actors/CommonDelegates.h"
 #include "Actors/Equipment/EquippableItem.h"
-#include "Characters/GCBaseCharacter.h"
-#include "Components/WeaponBarrelComponent.h"
+#include "Components/Combat/WeaponBarrelComponent.h"
 #include "Data/EquipmentTypes.h"
 #include "RangeWeaponItem.generated.h"
 

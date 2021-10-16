@@ -3,6 +3,7 @@
 
 #include "CharacterAttributesComponent.h"
 
+#include "AIController.h"
 #include "CharacterEquipmentComponent.h"
 #include "DrawDebugHelpers.h"
 #include "GameCode/Characters/GCBaseCharacter.h"

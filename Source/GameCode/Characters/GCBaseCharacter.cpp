@@ -1,5 +1,6 @@
 #include "GCBaseCharacter.h"
 
+#include "AIController.h"
 #include "DrawDebugHelpers.h"
 #include "Actors/Equipment/Weapons/RangeWeaponItem.h"
 #include "Components/CapsuleComponent.h"
@@ -984,3 +985,15 @@ void AGCBaseCharacter::OnActionEnded(ECharacterAction Action)
 	ActiveActions.Remove(Action);
 }
 
+void AGCBaseCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+	// AAIController* AIController = Cast<AAIController>(NewController);
+	IGenericTeamAgentInterface* AIController = Cast<IGenericTeamAgentInterface>(NewController);
+	if (!AIController)
+	{
+		return;
+	}
+
+	AIController->SetGenericTeamId(FGenericTeamId((uint8)Team));
+}

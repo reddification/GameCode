@@ -1,6 +1,5 @@
 #include "Actors/Equipment/Weapons/MeleeWeaponItem.h"
-
-#include "Components/MeleeHitRegistratorComponent.h"
+#include "Components/Combat/MeleeHitRegistratorComponent.h"
 
 AMeleeWeaponItem::AMeleeWeaponItem()
 {

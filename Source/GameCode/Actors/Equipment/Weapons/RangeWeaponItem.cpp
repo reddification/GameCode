@@ -6,7 +6,7 @@
 #include "GameCode.h"
 #include "Camera/CameraComponent.h"
 #include "Characters/GCBaseCharacter.h"
-#include "Components/WeaponBarrelComponent.h"
+#include "Components/Combat/WeaponBarrelComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundCue.h"
 

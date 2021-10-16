@@ -1,7 +1,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GenericTeamAgentInterface.h"
 #include "Actors/CommonDelegates.h"
+#include "Components/Character/CharacterAttributesComponent.h"
+#include "Data/AITypesGC.h"
 #include "Data/CharacterTypes.h"
 #include "Data/Movement/MantlingSettings.h"
 #include "Data/Movement/ZiplineParams.h"
@@ -10,7 +13,7 @@
 #include "GameCode/Data/MontagePlayResult.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
 #include "GameFramework/Character.h"
-#include "Data/UserInterfaceTypes.h"
+#include "Interfaces/Killable.h"
 #include "GCBaseCharacter.generated.h"
 
 class AEquippableItem;
@@ -22,7 +25,7 @@ class UCharacterAttributesComponent;
 class AInteractiveActor;
 
 UCLASS(Abstract, NotBlueprintable)
-class GAMECODE_API AGCBaseCharacter : public ACharacter
+class GAMECODE_API AGCBaseCharacter : public ACharacter, public IGenericTeamAgentInterface, public IKillable
 {
 	GENERATED_BODY()
 // ))
@@ -112,6 +115,12 @@ public:
 	void StopSliding(bool bForce = false);
 
 	bool IsMovementInputEnabled() const { return bMovementInputEnabled; }
+
+	virtual void PossessedBy(AController* NewController) override;
+
+	virtual FGenericTeamId GetGenericTeamId() const override { return FGenericTeamId((uint8)Team); }
+
+	virtual bool IsAlive() const override { return CharacterAttributesComponent->IsAlive(); }
 	
 protected:
 
@@ -238,6 +247,9 @@ protected:
 	UFUNCTION()
 	void ReactToDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType,
 		AController* InstigatedBy, AActor* DamageCauser);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	ETeam Team = ETeam::GoodGuys;
 	
 private:
 	bool bSprintRequested = false;
