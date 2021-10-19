@@ -1,10 +1,8 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "GCPlayerController.h"
 
-#include "Components/CharacterAttributesComponent.h"
-#include "Components/CharacterEquipmentComponent.h"
+#include "Actors/Equipment/Weapons/ThrowableItem.h"
+#include "Components/Character/CharacterAttributesComponent.h"
+#include "Components/Character/CharacterEquipmentComponent.h"
 #include "Actors/Equipment/Weapons/RangeWeaponItem.h"
 #include "Components/NameplateComponent.h"
 #include "GameCode/Characters/GCBaseCharacter.h"
@@ -16,12 +14,16 @@ void AGCPlayerController::SetPawn(APawn* InPawn)
 	BaseCharacter = Cast<AGCBaseCharacter>(InPawn);
 	if (BaseCharacter.IsValid())
 	{
-		UCharacterEquipmentComponent* EquipmentComponent = BaseCharacter->GetEquipmentComponent();
-		BaseCharacter->AimingStateChangedEvent.BindUObject(this, &AGCPlayerController::OnAimingStateChanged);
+		const UCharacterEquipmentComponent* EquipmentComponent = BaseCharacter->GetEquipmentComponent();
 		BaseCharacter->GetCharacterAttributesComponent()->AttributeChangedEvent.AddUObject(this, &AGCPlayerController::OnAttributeChanged);
 		
 		EquipmentComponent->WeaponAmmoChangedEvent.BindUObject(this, &AGCPlayerController::OnAmmoChanged);
-		EquipmentComponent->WeaponEquippedChangedEvent.AddUObject(this, &AGCPlayerController::OnWeaponEquipStateChanged);
+		EquipmentComponent->ThrowableEquippedEvent.BindUObject(this, &AGCPlayerController::OnThrowableEquipped);
+		EquipmentComponent->ThrowablesCountChanged.BindUObject(this, &AGCPlayerController::OnThowablesCountChanged);
+		EquipmentComponent->WeaponEquippedEvent.AddUObject(this, &AGCPlayerController::OnWeaponEquipped);
+		EquipmentComponent->WeaponUnequippedEvent.AddUObject(this, &AGCPlayerController::OnWeaponUnequipped);
+		EquipmentComponent->AimStateChangedEvent.AddUObject(this, &AGCPlayerController::OnAimingStateChanged);
+		EquipmentComponent->MeleeWeaponEquippedEvent.BindUObject(this, &AGCPlayerController::OnMeleeWeaponEquipped);
 	}
 }
 
@@ -84,6 +86,14 @@ void AGCPlayerController::SetupInputComponent()
 	InputComponent->BindAction("PreviousWeapon", EInputEvent::IE_Pressed, this, &AGCPlayerController::PickPreviousWeapon);
 
 	InputComponent->BindAction("ThrowItem", EInputEvent::IE_Pressed, this, &AGCPlayerController::ThrowItem);
+
+	InputComponent->BindAction("PrimaryMeleeAttack", EInputEvent::IE_Pressed, this, &AGCPlayerController::StartPrimaryMeleeAttack);
+	InputComponent->BindAction("PrimaryMeleeAttack", EInputEvent::IE_Released, this, &AGCPlayerController::StopPrimaryMeleeAttack);
+	
+	InputComponent->BindAction("SecondaryMeleeAttack", EInputEvent::IE_Pressed, this, &AGCPlayerController::StartSecondaryMeleeAttack);
+	InputComponent->BindAction("SecondaryMeleeAttack", EInputEvent::IE_Released, this, &AGCPlayerController::StopSecondaryMeleeAttack);
+
+	InputComponent->BindAction("ToggleFireMode", EInputEvent::IE_Pressed, this, &AGCPlayerController::ToggleFireMode);
 }
 
 void AGCPlayerController::Interact() 
@@ -299,7 +309,7 @@ void AGCPlayerController::PickNextWeapon()
 {
 	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
-		BaseCharacter->PickWeapon(1);
+		BaseCharacter->ChangeWeapon(1);
 	}
 }
 
@@ -307,7 +317,7 @@ void AGCPlayerController::PickPreviousWeapon()
 {
 	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
 	{
-		BaseCharacter->PickWeapon(-1);
+		BaseCharacter->ChangeWeapon(-1);
 	}
 }
 
@@ -327,6 +337,46 @@ void AGCPlayerController::ThrowItem()
 	}
 }
 
+void AGCPlayerController::StartPrimaryMeleeAttack()
+{
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
+		BaseCharacter->StartPrimaryMeleeAttack();
+	}
+}
+
+void AGCPlayerController::StopPrimaryMeleeAttack()
+{
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
+		BaseCharacter->StopPrimaryMeleeAttack();
+	}
+}
+
+void AGCPlayerController::StartSecondaryMeleeAttack()
+{
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
+		BaseCharacter->StartSecondaryMeleeAttack();
+	}
+}
+
+void AGCPlayerController::StopSecondaryMeleeAttack()
+{
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
+		BaseCharacter->StopSecondaryMeleeAttack();
+	}
+}
+
+void AGCPlayerController::ToggleFireMode()
+{
+	if (BaseCharacter.IsValid() && BaseCharacter->IsMovementInputEnabled())
+	{
+		BaseCharacter->ToggleFireMode();
+	}
+}
+
 void AGCPlayerController::StopFiring()
 {
 	if (BaseCharacter.IsValid())
@@ -335,11 +385,11 @@ void AGCPlayerController::StopFiring()
 	}
 }
 
-void AGCPlayerController::OnAimingStateChanged(bool bAiming, EReticleType NewReticleType, ARangeWeaponItem* Weapon)
+void AGCPlayerController::OnAimingStateChanged(bool bAiming, ARangeWeaponItem* Weapon)
 {
 	if (IsValid(PlayerHUDWidget))
 	{
-		PlayerHUDWidget->OnAimingStateChanged(bAiming, NewReticleType);
+		PlayerHUDWidget->OnAimingStateChanged(bAiming, IsValid(Weapon) ? Weapon->GetReticleType() : EReticleType::None);
 	}
 
 	if (IsValid(Weapon) && Weapon->GetAimReticleType() == EReticleType::Scope)
@@ -355,6 +405,10 @@ void AGCPlayerController::OnAimingStateChanged(bool bAiming, EReticleType NewRet
 			SetViewTarget(BaseCharacter.Get(), TransitionParams);
 		}
 	}
+	else if (!IsValid(Weapon) && !bAiming && GetViewTarget() != BaseCharacter.Get())
+	{
+		SetViewTarget(BaseCharacter.Get());
+	}
 }
 
 void AGCPlayerController::OnAmmoChanged(int32 NewAmmo, int32 TotalAmmo)
@@ -365,12 +419,45 @@ void AGCPlayerController::OnAmmoChanged(int32 NewAmmo, int32 TotalAmmo)
 	}
 }
 
-void AGCPlayerController::OnWeaponEquipStateChanged(ARangeWeaponItem* EquippedWeapon, bool bEquipped)
+void AGCPlayerController::OnThrowableEquipped(AThrowableItem* Throwable, int32 Count)
 {
 	if (IsValid(PlayerHUDWidget))
 	{
-		PlayerHUDWidget->SetReticleType(bEquipped ? EquippedWeapon->GetReticleType() : EReticleType::None);
-		// PlayerHUDWidget->SetWeaponName(EquippedWeapon->GetNameplateComponent()->GetName());
+		PlayerHUDWidget->SetThrowableName(Throwable->GetNameplateComponent()->GetName());
+		PlayerHUDWidget->SetThrowablesCount(Count);
 	}
-	
+}
+
+void AGCPlayerController::OnThowablesCountChanged(int32 Count)
+{
+	if (IsValid(PlayerHUDWidget))
+	{
+		PlayerHUDWidget->SetThrowablesCount(Count);
+	}
+}
+
+void AGCPlayerController::OnWeaponEquipped(const FText& Name, EReticleType Reticle)
+{
+	if (IsValid(PlayerHUDWidget))
+	{
+		PlayerHUDWidget->SetReticleType(Reticle);
+		PlayerHUDWidget->SetWeaponName(Name);
+	}
+}
+
+void AGCPlayerController::OnWeaponUnequipped()
+{
+	if (IsValid(PlayerHUDWidget))
+	{
+		PlayerHUDWidget->SetReticleType(EReticleType::None);
+		PlayerHUDWidget->SetWeaponName(FText::GetEmpty());
+	}
+}
+
+void AGCPlayerController::OnMeleeWeaponEquipped()
+{
+	if (IsValid(PlayerHUDWidget))
+	{
+		PlayerHUDWidget->OnMeleeWeaponEquipped();
+	}
 }

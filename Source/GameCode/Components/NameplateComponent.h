@@ -15,7 +15,7 @@ class GAMECODE_API UNameplateComponent : public USceneComponent
 	GENERATED_BODY()
 
 public:
-	FText GetName() const { return Name; }
+	const FText& GetName() const { return Name; }
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)

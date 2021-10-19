@@ -28,6 +28,8 @@ APlayerCharacter::APlayerCharacter(const FObjectInitializer& ObjectInitializer)
 	GetCharacterMovement()->JumpZVelocity = 600.f;
 
 	DefaultSpringArmOffset = SpringArmComponent->TargetArmLength;
+
+	Team = ETeam::Player;
 }
 
 void APlayerCharacter::BeginPlay()

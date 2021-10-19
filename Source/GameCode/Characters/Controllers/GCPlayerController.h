@@ -69,11 +69,23 @@ private:
 	void PickPreviousWeapon();
 
 	void ThrowItem();
+
+	void ToggleFireMode();
+
+	void StartPrimaryMeleeAttack();
+	void StopPrimaryMeleeAttack();
+	void StartSecondaryMeleeAttack();
+	void StopSecondaryMeleeAttack();
 	
 	void OnAttributeChanged(ECharacterAttribute Attribute, float Percent) const;
 	
 	bool bIgnoreCameraPitch;
-	void OnAimingStateChanged(bool bAiming, EReticleType NewReticleType, class ARangeWeaponItem* Weapon);
+	void OnAimingStateChanged(bool bAiming, class ARangeWeaponItem* Weapon);
 	void OnAmmoChanged(int32 NewAmmo, int32 TotalAmmo);
-	void OnWeaponEquipStateChanged(class ARangeWeaponItem* EquippedWeapon, bool bEquipped);
+	void OnThrowableEquipped(class AThrowableItem* Throwable, int32 Count);
+	void OnThowablesCountChanged(int32 Count);
+	
+	void OnWeaponEquipped(const FText& Name, EReticleType Reticle);
+	void OnWeaponUnequipped();
+	void OnMeleeWeaponEquipped();
 };

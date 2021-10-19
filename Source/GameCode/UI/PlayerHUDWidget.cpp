@@ -1,9 +1,7 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "UI/PlayerHUDWidget.h"
-#include "AmmoWidget.h"
+#include "WeaponInfoWidget.h"
 #include "ReticleWidget.h"
+#include "Components/TextBlock.h"
 
 void UPlayerHUDWidget::OnAimingStateChanged(bool bAiming, EReticleType ReticleType)
 {
@@ -13,7 +11,17 @@ void UPlayerHUDWidget::OnAimingStateChanged(bool bAiming, EReticleType ReticleTy
 
 void UPlayerHUDWidget::SetAmmo(int32 ClipAmmo, int32 RemainingAmmo)
 {
-	AmmoWidget->SetAmmo(ClipAmmo, RemainingAmmo);
+	if (WeaponInfoWidget->Visibility == ESlateVisibility::Hidden)
+	{
+		WeaponInfoWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+	}
+	
+	WeaponInfoWidget->SetAmmo(ClipAmmo, RemainingAmmo);
+}
+
+void UPlayerHUDWidget::SetThrowablesCount(int32 Count)
+{
+	WeaponInfoWidget->SetThrowablesCount(Count);
 }
 
 void UPlayerHUDWidget::OnAttributeChanged(ECharacterAttribute Attribute, float Value)
@@ -24,4 +32,20 @@ void UPlayerHUDWidget::OnAttributeChanged(ECharacterAttribute Attribute, float V
 void UPlayerHUDWidget::SetReticleType(EReticleType ReticleType)
 {
 	Reticle->SetReticleType(ReticleType);
+}
+
+void UPlayerHUDWidget::OnMeleeWeaponEquipped()
+{
+	Reticle->SetReticleType(EReticleType::None);
+	WeaponInfoWidget->OnMeleeWeaponEquipped();
+}
+
+void UPlayerHUDWidget::SetWeaponName(const FText& Name)
+{
+	WeaponInfoWidget->ActiveWeaponNameTextblock->SetText(Name);
+}
+
+void UPlayerHUDWidget::SetThrowableName(const FText& Name)
+{
+	WeaponInfoWidget->ActiveThrowableNameTextblock->SetText(Name);
 }

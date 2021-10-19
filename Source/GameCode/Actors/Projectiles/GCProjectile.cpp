@@ -6,6 +6,7 @@
 #include "GameCode.h"
 #include "Components/SphereComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
+#include "GameFramework/RotatingMovementComponent.h"
 
 AGCProjectile::AGCProjectile()
 {
@@ -17,6 +18,24 @@ AGCProjectile::AGCProjectile()
 	ProjectileMovementComponent->InitialSpeed = 2000.f;
 	ProjectileMovementComponent->bSimulationEnabled = false;
 	AddOwnedComponent(ProjectileMovementComponent);
+
+	RotatingMovementComponent = CreateDefaultSubobject<URotatingMovementComponent>(TEXT("RotatingMovement"));
+	AddOwnedComponent(RotatingMovementComponent);
+}
+
+void AGCProjectile::BeginPlay()
+{
+	Super::BeginPlay();
+	if (bDestroyOnHit)
+	{
+		CollisionComponent->OnComponentHit.AddDynamic(this, &AGCProjectile::DestroyOnHit);
+	}
+	
+	if (bRotate)
+	{
+		ProjectileMovementComponent->OnProjectileStop.AddDynamic(this, &AGCProjectile::OnProjectileStopped);
+		ProjectileMovementComponent->OnProjectileBounce.AddDynamic(this, &AGCProjectile::OnProjectileBounced);
+	}
 }
 
 void AGCProjectile::LaunchProjectile(FVector Direction, float Speed, AController* ThrowerController)
@@ -24,9 +43,25 @@ void AGCProjectile::LaunchProjectile(FVector Direction, float Speed, AController
 	ProjectileMovementComponent->Velocity = Direction * Speed;
 	ProjectileMovementComponent->bSimulationEnabled = true;
 	CollisionComponent->SetCollisionProfileName(ProfileProjectile);
-	CollisionComponent->IgnoreActorWhenMoving(GetOwner(), true);
+	AActor* ProjectileOwner = GetOwner();
+	while (IsValid(ProjectileOwner))
+	{
+		CollisionComponent->IgnoreActorWhenMoving(ProjectileOwner, true);
+		ProjectileOwner = ProjectileOwner->GetOwner();
+	}
+	
 	this->CachedThrowerController = ThrowerController; 
 	OnProjectileLaunched();
+
+	if (bRotate)
+	{
+		RotatingMovementComponent->RotationRate = FRotator(BaseRotationRate.Pitch * Direction.Y,
+			BaseRotationRate.Yaw * Direction.Z, BaseRotationRate.Roll * Direction.X) * ProjectileMovementComponent->Velocity.Size();
+	}
+	else
+	{
+		ProjectileMovementComponent->bRotationFollowsVelocity = 1;
+	}
 }
 
 void AGCProjectile::Drop(AController* ThrowerController)
@@ -36,20 +71,28 @@ void AGCProjectile::Drop(AController* ThrowerController)
 	ProjectileMovementComponent->bSimulationEnabled = true;
 	CollisionComponent->SetCollisionProfileName(ProfileProjectile);
 	CollisionComponent->IgnoreActorWhenMoving(GetOwner(), true);
-
 }
 
-void AGCProjectile::BeginPlay()
-{
-	Super::BeginPlay();
-	CollisionComponent->OnComponentHit.AddDynamic(this, &AGCProjectile::OnCollisionHit);
-}
-
-void AGCProjectile::OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
+void AGCProjectile::DestroyOnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	ProjectileHitEvent.ExecuteIfBound(Hit, ProjectileMovementComponent->Velocity.GetSafeNormal());
 	Destroy();
 	// TODO expose UStaticMeshComponent and use SetLifeSpan instead of immediately destroying?
-	// SetLifeSpan(2.f); 
+	// SetLifeSpan(2.f); 	
+}
+
+void AGCProjectile::OnProjectileStopped(const FHitResult& ImpactResult)
+{
+}
+
+
+void AGCProjectile::OnProjectileBounced(const FHitResult& ImpactResult, const FVector& ImpactVelocity)
+{
+	if (bRotate)
+	{
+		RotatingMovementComponent->RotationRate = FRotator(BaseRotationRate.Pitch * ImpactResult.ImpactNormal.Y,
+		BaseRotationRate.Yaw * ImpactResult.ImpactNormal.Z, BaseRotationRate.Roll * ImpactResult.ImpactNormal.X)
+			* ImpactVelocity.Size();
+	}
 }

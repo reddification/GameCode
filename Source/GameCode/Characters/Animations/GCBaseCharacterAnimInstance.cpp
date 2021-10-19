@@ -4,12 +4,11 @@
 #include "GCBaseCharacterAnimInstance.h"
 
 #include "Actors/Equipment/Weapons/RangeWeaponItem.h"
-#include "Camera/CameraComponent.h"
-#include "Components/CharacterEquipmentComponent.h"
+#include "Components/Character/CharacterEquipmentComponent.h"
 #include "Data/Movement/IKData.h"
 #include "GameCode/Characters/GCBaseCharacter.h"
-#include "GameCode/Components/CharacterAttributesComponent.h"
-#include "GameCode/Components/InverseKinematicsComponent.h"
+#include "GameCode/Components/Character/CharacterAttributesComponent.h"
+#include "GameCode/Components/Character/InverseKinematicsComponent.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
@@ -52,12 +51,13 @@ void UGCBaseCharacterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	}
 
 	EquippedItemType = Character->GetEquipmentComponent()->GetEquippedItemType();
-	Rotation = Character->GetControlRotation();// - FRotator(90, 0, 0);
+	Rotation = Character->GetControlRotation();
 	Rotation.Pitch = Rotation.Pitch > 180 ? Rotation.Pitch - 360 : Rotation.Pitch;
-	ARangeWeaponItem* CurrentRangeWeapon = Character->GetEquipmentComponent()->GetCurrentRangeWeapon();
+	const ARangeWeaponItem* CurrentRangeWeapon = Character->GetEquipmentComponent()->GetCurrentWeapon();
 	if (IsValid(CurrentRangeWeapon))
 	{
-		bForegrip = CurrentRangeWeapon->GetEquippableItemType() == EEquippableItemType::AssaultRifle;
+		EEquippableItemType EquippableItemType = CurrentRangeWeapon->GetEquippableItemType();
+		bForegrip = EquippableItemType == EEquippableItemType::AssaultRifle || EquippableItemType == EEquippableItemType::SniperRifle;
 	}
 	else
 	{
@@ -70,7 +70,7 @@ void UGCBaseCharacterAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		WeaponForegripTransform = CurrentRangeWeapon->GetForegripTransform();
 	}
 
-	bAiming = Character->IsAiming();
+	bAiming = Character->GetEquipmentComponent()->IsAiming();
 	
 	const FIkData& IkData = Character->GetInverseKinematicsComponent()->GetIkData();
 	// constraining max foot elevation when crouching because it looks shitty with current animations

@@ -1,9 +1,7 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "Actors/Projectiles/ExplosiveProjectile.h"
 
-#include "Components/ExplosionComponent.h"
+#include "Components/Combat/ExplosionComponent.h"
+#include "Kismet/GameplayStatics.h"
 
 AExplosiveProjectile::AExplosiveProjectile()
 {
@@ -20,6 +18,13 @@ void AExplosiveProjectile::Activate(AController* ThrowerController)
 void AExplosiveProjectile::OnProjectileLaunched()
 {
 	Super::OnProjectileLaunched();
+}
+
+void AExplosiveProjectile::DestroyOnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+	Detonate();
+	Super::DestroyOnHit(HitComponent, OtherActor, OtherComp, NormalImpulse, Hit);
 }
 
 void AExplosiveProjectile::Detonate()

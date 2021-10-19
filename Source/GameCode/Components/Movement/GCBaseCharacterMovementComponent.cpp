@@ -21,6 +21,7 @@ void UGCBaseCharacterMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	DefaultWalkSpeed = MaxWalkSpeed;
+	CurrentAimSpeed = DefaultAimingSpeed;
 	GCCharacter = Cast<AGCBaseCharacter>(CharacterOwner);
 	CharacterOwner->GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &UGCBaseCharacterMovementComponent::OnPlayerCapsuleHit);
 	InitPostureHalfHeights();
@@ -78,11 +79,13 @@ bool UGCBaseCharacterMovementComponent::TryStartSprint()
 	}
 	
 	bSprinting = true;
+	GCCharacter->OnActionStarted(ECharacterAction::Sprint);
 	return true;
 }
 
 void UGCBaseCharacterMovementComponent::StopSprint()
 {
+	GCCharacter->OnActionEnded(ECharacterAction::Sprint);
 	bSprinting = false;
 }
 
@@ -145,6 +148,7 @@ void UGCBaseCharacterMovementComponent::OnMovementModeChanged(EMovementMode Prev
 		}
 
 		bNotifyApex = true;
+		GCCharacter->OnActionStarted(ECharacterAction::Swim);
 		CharacterOwner->GetCapsuleComponent()->SetCapsuleSize(SwimmingCapsuleRadius, SwimmingCapsuleHalfHeight);
 	}
 	else if (PreviousMovementMode == MOVE_Swimming)
@@ -156,6 +160,7 @@ void UGCBaseCharacterMovementComponent::OnMovementModeChanged(EMovementMode Prev
 		FRotator Rotation = CharacterOwner->GetActorRotation();
 		Rotation.Roll = 0;
 		CharacterOwner->SetActorRotation(Rotation);
+		GCCharacter->OnActionEnded(ECharacterAction::Swim);
 	}
 	else if (PreviousMovementMode == MOVE_Custom)
 	{
@@ -164,6 +169,7 @@ void UGCBaseCharacterMovementComponent::OnMovementModeChanged(EMovementMode Prev
 		case EGCMovementMode::CMOVE_Climbing:
 			StoppedClimbing.ExecuteIfBound(CurrentClimbable);
 			CurrentClimbable = nullptr;
+			GCCharacter->OnActionEnded(ECharacterAction::Climb);
 			break;
 		default:
 			break;
@@ -173,13 +179,13 @@ void UGCBaseCharacterMovementComponent::OnMovementModeChanged(EMovementMode Prev
 
 #pragma region CROUCH
 
-void UGCBaseCharacterMovementComponent::TryStandUp()
+void UGCBaseCharacterMovementComponent::RequestStandUp()
 {
 	bWantsToProne = false;
 	bWantsToCrouch = false;
 }
 
-void UGCBaseCharacterMovementComponent::TryCrouch()
+void UGCBaseCharacterMovementComponent::RequestCrouch()
 {
 	bWantsToProne = false;
 	bWantsToCrouch = true;
@@ -187,7 +193,7 @@ void UGCBaseCharacterMovementComponent::TryCrouch()
 
 void UGCBaseCharacterMovementComponent::Crouch(bool bClientSimulation)
 {
-	if (!bClientSimulation && !CanCrouchInCurrentState() || !IsMovingOnGround() || IsSprinting())
+	if (!bClientSimulation && !CanCrouchInCurrentState() || !IsMovingOnGround() || IsSprinting() || !GCCharacter->CanStartAction(ECharacterAction::Crouch))
 	{
 		return;
 	}
@@ -200,6 +206,7 @@ void UGCBaseCharacterMovementComponent::Crouch(bool bClientSimulation)
 		// IDK if I can get rid of this since i'm using postures now
 		CharacterOwner->bIsCrouched = true;
 		CrouchedOrProned.ExecuteIfBound(ScaledHalfHeightAdjust);
+		GCCharacter->OnActionStarted(ECharacterAction::Crouch);
 	}
 	else
 	{
@@ -209,7 +216,11 @@ void UGCBaseCharacterMovementComponent::Crouch(bool bClientSimulation)
 
 void UGCBaseCharacterMovementComponent::UnCrouch(bool bClientSimulation)
 {
-	TryWakeUpToState(EPosture::Standing);
+	bool bWokeUp = TryWakeUpToState(EPosture::Standing);
+	if (bWokeUp)
+	{
+		GCCharacter->OnActionEnded(ECharacterAction::Crouch);
+	}
 }
 
 #pragma endregion CROUCH
@@ -218,7 +229,7 @@ void UGCBaseCharacterMovementComponent::UnCrouch(bool bClientSimulation)
 
 void UGCBaseCharacterMovementComponent::Prone()
 {
-	if (!CanProne())
+	if (!CanProne() || !GCCharacter->CanStartAction(ECharacterAction::Crawl))
 	{
 		bWantsToProne = false;
 		return;
@@ -230,6 +241,7 @@ void UGCBaseCharacterMovementComponent::Prone()
 		CurrentPosture = EPosture::Proning;
 		CharacterOwner->bIsCrouched = false;
 		CrouchedOrProned.ExecuteIfBound(ScaledHalfHeightAdjust);
+		GCCharacter->OnActionStarted(ECharacterAction::Crawl);
 	}
 	else
 	{
@@ -239,9 +251,10 @@ void UGCBaseCharacterMovementComponent::Prone()
 
 void UGCBaseCharacterMovementComponent::UnProne()
 {
-	if (CanUnprone())
+	bool bWokeUp = TryWakeUpToState(EPosture::Standing);
+	if (bWokeUp)
 	{
-		TryWakeUpToState(EPosture::Standing);
+		GCCharacter->OnActionEnded(ECharacterAction::Crawl);
 	}
 }
 
@@ -429,17 +442,12 @@ bool UGCBaseCharacterMovementComponent::CanApplyCustomRotation()
 	return !CharacterOwner->bUseControllerRotationYaw;
 }
 
-bool UGCBaseCharacterMovementComponent::CanUnprone()
-{
-	return true;
-}
-
 bool UGCBaseCharacterMovementComponent::CanProne()
 {
 	return (IsMovingOnGround() || IsSliding()) && !UpdatedComponent->IsSimulatingPhysics(); 
 }
 
-void UGCBaseCharacterMovementComponent::TryProne()
+void UGCBaseCharacterMovementComponent::RequestProne()
 {
 	bWantsToProne = true;
 	bWantsToCrouch = false;
@@ -451,7 +459,7 @@ void UGCBaseCharacterMovementComponent::TryProne()
 
 bool UGCBaseCharacterMovementComponent::TryStartMantle(const FMantlingMovementParameters& NewMantlingParameters)
 {
-	if (IsInCustomMovementMode(EGCMovementMode::CMOVE_Mantling))
+	if (IsInCustomMovementMode(EGCMovementMode::CMOVE_Mantling) || !GCCharacter->CanStartAction(ECharacterAction::Mantle))
 		return false;
 	
 	this->MantlingParameters = NewMantlingParameters;
@@ -459,12 +467,14 @@ bool UGCBaseCharacterMovementComponent::TryStartMantle(const FMantlingMovementPa
 	SetMovementMode(EMovementMode::MOVE_Custom, (uint8)EGCMovementMode::CMOVE_Mantling);
 	GetWorld()->GetTimerManager().SetTimer(MantlingTimerHandle, this,
     	&UGCBaseCharacterMovementComponent::EndMantle, MantlingParameters.Duration);
+	GCCharacter->OnActionStarted(ECharacterAction::Mantle);
 	return true;
 }
 
 void UGCBaseCharacterMovementComponent::EndMantle()
 {
 	SetMovementMode(MOVE_Walking);
+	GCCharacter->OnActionEnded(ECharacterAction::Mantle);
 }
 
 bool UGCBaseCharacterMovementComponent::IsMantling() const
@@ -507,7 +517,7 @@ float UGCBaseCharacterMovementComponent::GetActorToClimbableProjection(const ALa
 
 bool UGCBaseCharacterMovementComponent::TryStartClimbing(const ALadder* Ladder)
 {
-	if (IsClimbing())
+	if (IsClimbing() || !GCCharacter->CanStartAction(ECharacterAction::Climb))
 		return false;
 
 	CurrentClimbable = Ladder;
@@ -531,6 +541,7 @@ bool UGCBaseCharacterMovementComponent::TryStartClimbing(const ALadder* Ladder)
 		.RotateAngleAxis(180, Ladder->GetActorUpVector()).ToOrientationRotator();
 	CharacterOwner->SetActorRotation(TargetOrientationRotation);
 	SetMovementMode(MOVE_Custom, (uint8)EGCMovementMode::CMOVE_Climbing);
+	GCCharacter->OnActionStarted(ECharacterAction::Climb);
 	return true;
 }
 
@@ -591,6 +602,8 @@ void UGCBaseCharacterMovementComponent::StopClimbing(EStopClimbingMethod StopCli
 			SetMovementMode(MOVE_Falling);
 			break;
 	}
+
+	GCCharacter->OnActionEnded(ECharacterAction::Climb);
 }
 
 bool UGCBaseCharacterMovementComponent::IsClimbing() const
@@ -641,7 +654,7 @@ void UGCBaseCharacterMovementComponent::PhysCustomClimbing(float DeltaTime, int3
 
 bool UGCBaseCharacterMovementComponent::TryStartZiplining(const FZiplineParams& NewZiplineParams)
 {
-	if (IsZiplining())
+	if (IsZiplining() || !GCCharacter->CanStartAction(ECharacterAction::Zipline))
 	{
 		return false;		
 	}
@@ -650,12 +663,14 @@ bool UGCBaseCharacterMovementComponent::TryStartZiplining(const FZiplineParams& 
 	bForceRotation = true;
 	ForceTargetRotation = NewZiplineParams.ZiplineNormalizedDirection.ToOrientationRotator();
 	SetMovementMode(MOVE_Custom, (uint8)EGCMovementMode::CMOVE_Zipline);
+	GCCharacter->OnActionStarted(ECharacterAction::Zipline);
 	return true;
 }
 
 void UGCBaseCharacterMovementComponent::StopZiplining()
 {
 	SetMovementMode(MOVE_Falling);
+	GCCharacter->OnActionEnded(ECharacterAction::Zipline);
 }
 
 bool UGCBaseCharacterMovementComponent::IsZiplining() const
@@ -706,7 +721,7 @@ void UGCBaseCharacterMovementComponent::OnPlayerCapsuleHit(UPrimitiveComponent* 
 		return;
 	}
 	
-	if (!WallrunData.bWantsToWallrun || IsWallrunning() || bOutOfStamina)
+	if (!WallrunData.bWantsToWallrun || IsWallrunning() || bOutOfStamina || !GCCharacter->CanStartAction(ECharacterAction::Wallrun))
 	{
 		return;
 	}
@@ -737,6 +752,7 @@ void UGCBaseCharacterMovementComponent::OnPlayerCapsuleHit(UPrimitiveComponent* 
 		: WallrunSettings.WallrunHeightDynamicsFromAirCurve;
 	
 	SetMovementMode(MOVE_Custom, (uint8)EGCMovementMode::CMOVE_WallRun);
+	GCCharacter->OnActionStarted(ECharacterAction::Wallrun);
 }
 
 ESide UGCBaseCharacterMovementComponent::GetWallrunSideFromNormal(const FVector& Normal) const
@@ -813,6 +829,7 @@ void UGCBaseCharacterMovementComponent::StopWallrunning(bool bResetTimer)
 	WallrunData.bWantsToWallrun = false;
 	if (!IsWallrunning())
 	{
+		GCCharacter->OnActionEnded(ECharacterAction::Wallrun);
 		return;
 	}
 	
@@ -823,6 +840,7 @@ void UGCBaseCharacterMovementComponent::StopWallrunning(bool bResetTimer)
 	
 	WallrunEndEvent.Broadcast(WallrunData.Side);
 	SetMovementMode(GetMovementMode());
+	GCCharacter->OnActionEnded(ECharacterAction::Wallrun);
 }
 
 bool UGCBaseCharacterMovementComponent::IsWallrunning() const
@@ -946,7 +964,7 @@ bool UGCBaseCharacterMovementComponent::IsSliding() const
 
 bool UGCBaseCharacterMovementComponent::TryStartSliding()
 {
-	if (IsSliding() || !SlideData.bCanSlide)
+	if (IsSliding() || !SlideData.bCanSlide || !GCCharacter->CanStartAction(ECharacterAction::Slide))
 	{
 		return false;
 	}
@@ -962,6 +980,7 @@ bool UGCBaseCharacterMovementComponent::TryStartSliding()
 	WallrunData.bWantsToWallrun = false;
 	SlideData.Speed = Velocity.Size();
 	SetMovementMode(MOVE_Custom, (uint8)EGCMovementMode::CMOVE_Slide);
+	GCCharacter->OnActionStarted(ECharacterAction::Slide);
 	return true;
 }
 
@@ -969,11 +988,13 @@ void UGCBaseCharacterMovementComponent::StopSliding()
 {
 	if (!IsSliding())
 	{
+		GCCharacter->OnActionEnded(ECharacterAction::Slide);
 		return;
 	}
 
 	ResetFromSliding();
 	SetMovementMode(GetMovementMode());
+	GCCharacter->OnActionEnded(ECharacterAction::Slide);
 }
 
 void UGCBaseCharacterMovementComponent::ResetFromSliding()

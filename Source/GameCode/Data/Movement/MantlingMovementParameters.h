@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "MantlingSettings.h"
 #include "Curves/CurveVector.h"
-#include "GameCode/Components/LedgeDetectionComponent.h"
+#include "GameCode/Components/Character/LedgeDetectionComponent.h"
 
 struct FMantlingMovementParameters
 {

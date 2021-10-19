@@ -77,20 +77,17 @@ bool UWeaponBarrelComponent::ShootProjectile(const FVector& ViewLocation, const 
 	AController* ShooterController)
 {
 	CachedShooterController = ShooterController;
-	// ??
 	FVector ShootDirection = (ViewLocation + ViewDirection * Range) - GetComponentLocation();
-	
 	AGCProjectile* CurrentProjectile = GetWorld()->SpawnActor<AGCProjectile>(ProjectileClass, GetComponentLocation(), FRotator::ZeroRotator);
+	CurrentProjectile->SetOwner(GetOwner());
 	FHitResult TraceResult;
-	const FVector TraceEnd = ViewLocation + ViewDirection * Range;
+	const FVector TraceEnd = ViewLocation + ShootDirection * Range;
 	bool bHit = GetWorld()->LineTraceSingleByChannel(TraceResult, ViewLocation, TraceEnd, ECC_Visibility);
 	ShootDirection = bHit || TraceResult.bBlockingHit
 		? (TraceResult.ImpactPoint - CurrentProjectile->GetActorLocation()).GetSafeNormal()
 		: (TraceEnd - CurrentProjectile->GetActorLocation()).GetSafeNormal();
 	CurrentProjectile->SetActorRotation(ShootDirection.ToOrientationRotator());
 	CurrentProjectile->ProjectileHitEvent.BindUObject(this, &UWeaponBarrelComponent::OnProjectileHit);
-	// FVector ViewUpVector = ViewRotation.RotateVector(FVector::UpVector);
-	// LaunchDirection = LaunchDirection + FMath::Tan(FMath::DegreesToRadians(ThrowAngle)) * ViewUpVector;
 	
 	CurrentProjectile->LaunchProjectile(ShootDirection.GetSafeNormal(), GetOwner()->GetVelocity().Size() + ProjectileSpeed, ShooterController);
 	return true;
@@ -111,8 +108,8 @@ void UWeaponBarrelComponent::ApplyDamage(const FHitResult& ShotResult, const FVe
 	AActor* HitActor = ShotResult.GetActor();
 	// Perhaps its better to use squared distance
 	float Damage = IsValid(DamageFalloffDiagram)
-		? DamageFalloffDiagram->GetFloatValue(ShotResult.Distance / Range) * InitialDamage
-		: InitialDamage;
+		? DamageFalloffDiagram->GetFloatValue(ShotResult.Distance / Range) * InitialDamage / FireModeSettings.BulletsPerShot
+		: InitialDamage / FireModeSettings.BulletsPerShot;
 		
 	if (IsValid(HitActor))
 	{

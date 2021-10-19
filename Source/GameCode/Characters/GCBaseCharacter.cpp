@@ -1,12 +1,10 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "GCBaseCharacter.h"
 
+#include "AIController.h"
 #include "DrawDebugHelpers.h"
 #include "Actors/Equipment/Weapons/RangeWeaponItem.h"
 #include "Components/CapsuleComponent.h"
-#include "Components/CharacterEquipmentComponent.h"
+#include "Components/Character/CharacterEquipmentComponent.h"
 #include "Data/Movement/MantlingMovementParameters.h"
 #include "Data/Movement/Posture.h"
 #include "Data/Movement/StopClimbingMethod.h"
@@ -14,9 +12,9 @@
 #include "GameCode/Actors/Interactive/InteractiveActor.h"
 #include "GameCode/Actors/Interactive/Environment/Ladder.h"
 #include "GameCode/Actors/Interactive/Environment/Zipline.h"
-#include "GameCode/Components/CharacterAttributesComponent.h"
-#include "GameCode/Components/InverseKinematicsComponent.h"
-#include "GameCode/Components/LedgeDetectionComponent.h"
+#include "GameCode/Components/Character/CharacterAttributesComponent.h"
+#include "GameCode/Components/Character/InverseKinematicsComponent.h"
+#include "GameCode/Components/Character/LedgeDetectionComponent.h"
 #include "GameCode/Components/Movement/GCBaseCharacterMovementComponent.h"
 #include "GameCode/Data/MontagePlayResult.h"
 #include "GameCode/Data/Movement/ZiplineParams.h"
@@ -64,12 +62,14 @@ void AGCBaseCharacter::BeginPlay()
 	CharacterAttributesComponent->OutOfHealthEvent.AddUObject(this, &AGCBaseCharacter::OnOutOfHealth);
 	CharacterAttributesComponent->OutOfStaminaEvent.AddUObject(this, &AGCBaseCharacter::OnOutOfStamina);
 
-	CharacterEquipmentComponent->WeaponEquippedChangedEvent.AddUObject(this, &AGCBaseCharacter::OnWeaponEquippedChanged);
-	CharacterEquipmentComponent->WeaponPickedUpEvent.BindUObject(this, &AGCBaseCharacter::OnWeaponPickedUpChanged);
+	CharacterEquipmentComponent->AimStateChangedEvent.AddUObject(this, &AGCBaseCharacter::OnAimStateChanged);
 	CharacterEquipmentComponent->ChangingEquippedItemStarted.BindUObject(this, &AGCBaseCharacter::OnChangingEquippedItemStarted);
+	CharacterEquipmentComponent->AimingSpeedChangedEvent.BindUObject(GCMovementComponent, &UGCBaseCharacterMovementComponent::SetAimingSpeed);
+	CharacterEquipmentComponent->AimingSpeedResetEvent.BindUObject(GCMovementComponent, &UGCBaseCharacterMovementComponent::ResetAimingSpeed);
 	
 	OnTakeAnyDamage.AddDynamic(CharacterAttributesComponent, &UCharacterAttributesComponent::OnTakeAnyDamage);
-	
+	OnTakeAnyDamage.AddDynamic(this, &AGCBaseCharacter::ReactToDamage);
+
 	CharacterEquipmentComponent->CreateLoadout();
 	UpdateStrafingControls();
 }
@@ -93,8 +93,7 @@ void AGCBaseCharacter::Tick(float DeltaTime)
 void AGCBaseCharacter::OnOutOfHealth()
 {
 	bool bDeathMontagePlaying = false;
-	InterruptOtherActions();
-	StopAnimMontage();
+	// StopAnimMontage();
 	if (GCMovementComponent->IsMovingOnGround())
 	{
 		const float Duration = PlayAnimMontage(DeathAnimationMontage);
@@ -166,7 +165,7 @@ void AGCBaseCharacter::StopRequestingSprint()
 bool AGCBaseCharacter::CanSprint() const
 {
 	return IsPendingMovement()
-		&& !bAiming
+		&& !CharacterEquipmentComponent->IsAiming()
 		&& GCMovementComponent->IsMovingOnGround() && !CharacterAttributesComponent->IsOutOfStamina()
 		&& GCMovementComponent->GetCurrentPosture() != EPosture::Proning;
 }
@@ -220,7 +219,7 @@ void AGCBaseCharacter::Jump()
 {
 	if (GCMovementComponent->GetCurrentPosture() == EPosture::Proning)
 	{
-		GCMovementComponent->TryStandUp();
+		GCMovementComponent->RequestStandUp();
 	}
 	else if (bIsCrouched)
 	{
@@ -315,7 +314,6 @@ void AGCBaseCharacter::NotifyJumpApex()
 
 FMontagePlayResult AGCBaseCharacter::PlayHardLandMontage()
 {
-	InterruptOtherActions();
 	return PlayHardLandMontage(GetMesh()->GetAnimInstance(), HardLandMontageTP);
 }
 
@@ -352,10 +350,6 @@ void AGCBaseCharacter::Interact()
 	else
 	{
 		TryStartInteracting();
-		if (bInteracting)
-		{
-			InterruptOtherActions();
-		}
 	}
 }
 
@@ -469,7 +463,7 @@ void AGCBaseCharacter::ToggleCrouchState()
 {
 	if (!bIsCrouched && !GCMovementComponent->IsSliding())
 	{
-		GCMovementComponent->TryCrouch();
+		GCMovementComponent->RequestCrouch();
 	}
 }
 
@@ -477,7 +471,7 @@ void AGCBaseCharacter::ToggleProneState()
 {
 	if (bIsCrouched)
 	{
-		GCMovementComponent->TryProne();
+		GCMovementComponent->RequestProne();
 	}
 }
 
@@ -575,10 +569,6 @@ void AGCBaseCharacter::Mantle(bool bForce)
 		{
 			return;
 		}
-		else
-		{
-			InterruptOtherActions();
-		}
 		
 		if (bIsCrouched)
 		{
@@ -660,7 +650,6 @@ bool AGCBaseCharacter::CanAttemptWallrun() const
 void AGCBaseCharacter::OnWallrunBegin(ESide WallrunSide)
 {
 	CharacterAttributesComponent->SetWallrunning(true);
-	InterruptOtherActions();
 }
 
 void AGCBaseCharacter::OnWallrunEnd(ESide WallrunSide) const
@@ -685,7 +674,6 @@ void AGCBaseCharacter::TryStartSliding()
 		bool bSlideStarted = GCMovementComponent->TryStartSliding();
 		if (bSlideStarted)
 		{
-			InterruptOtherActions();
 			StopSprinting();
 		}
 	}
@@ -719,11 +707,7 @@ void AGCBaseCharacter::StartFiring()
 {
 	if (CharacterAttributesComponent->IsAlive() && CanShoot())
 	{
-		ARangeWeaponItem* RangeWeapon = CharacterEquipmentComponent->GetCurrentRangeWeapon();
-		if (IsValid(RangeWeapon))
-		{
-			RangeWeapon->TryStartFiring(Controller);
-		}
+		CharacterEquipmentComponent->StartShooting(Controller);
 	}
 }
 
@@ -734,61 +718,30 @@ void AGCBaseCharacter::StopFiring()
 
 void AGCBaseCharacter::StartAiming()
 {
-	ARangeWeaponItem* CurrentRangeWeapon = CharacterEquipmentComponent->GetCurrentRangeWeapon();
-	if (!IsValid(CurrentRangeWeapon) || !CanAim())
-	{
-		return;
-	}
-	
-	bAiming = true;
-	StopSprinting();
-	GCMovementComponent->SetIsAiming(true);
-	CurrentRangeWeapon->StartAiming();
-	OnAimingStart(CurrentRangeWeapon->GetAimFOV(), CurrentRangeWeapon->GetAimTurnModifier(), CurrentRangeWeapon->GetAimLookUpModifier());
-	AimingStateChangedEvent.ExecuteIfBound(true, CurrentRangeWeapon->GetReticleType(), CurrentRangeWeapon);
+	CharacterEquipmentComponent->StartAiming();
 }
 
 void AGCBaseCharacter::StopAiming()
 {
-	if (!bAiming)
-	{
-		return;
-	}
-	
-	bAiming = false;
-	GCMovementComponent->SetIsAiming(false);
-	ARangeWeaponItem* CurrentRangeWeapon = CharacterEquipmentComponent->GetCurrentRangeWeapon();
-	EReticleType ReticleType = EReticleType::None;
-	if (IsValid(CurrentRangeWeapon))
-	{
-		CurrentRangeWeapon->StopAiming();
-		ReticleType = CurrentRangeWeapon->GetReticleType();
-	}
-	
-	OnAimingEnd();
-	AimingStateChangedEvent.ExecuteIfBound(false, ReticleType, CurrentRangeWeapon);
+	CharacterEquipmentComponent->StopAiming();
 }
 
 void AGCBaseCharacter::StartReloading()
 {
 	if (CanReload())
 	{
-		FReloadData ReloadData = CharacterEquipmentComponent->TryReload();
-		if (ReloadData.bStarted && IsValid(ReloadData.CharacterReloadMontage))
-		{
-			const float ActualDuration = PlayAnimMontageWithDuration(ReloadData.CharacterReloadMontage, ReloadData.DesiredDuration);
-			if (ActualDuration > 0)
-			{
-				ActiveReloadMontage = ReloadData.CharacterReloadMontage;
-			}
-		}
+		CharacterEquipmentComponent->TryReload();
 	}
 }
 
-void AGCBaseCharacter::PickWeapon(int Delta)
+void AGCBaseCharacter::ChangeWeapon(int WeaponIndexDelta)
 {
-	InterruptOtherActions();
-	CharacterEquipmentComponent->EquipWeapon(Delta);
+	CharacterEquipmentComponent->EquipWeapon(WeaponIndexDelta);
+}
+
+void AGCBaseCharacter::ToggleFireMode()
+{
+	CharacterEquipmentComponent->StartTogglingFireMode();
 }
 
 void AGCBaseCharacter::ThrowItem()
@@ -796,76 +749,54 @@ void AGCBaseCharacter::ThrowItem()
 	CharacterEquipmentComponent->TryThrow();
 }
 
-void AGCBaseCharacter::InterruptOtherActions()
-{
-	CharacterEquipmentComponent->InterruptReloading();
-	CharacterEquipmentComponent->InterruptThrowingItem();
-	if (IsValid(ActiveReloadMontage))
-	{
-		StopAnimMontage(ActiveReloadMontage);
-		ActiveReloadMontage = nullptr;
-	}
-}
-
 bool AGCBaseCharacter::CanReload() const
 {
-	return (GCMovementComponent->IsMovingOnGround() || GCMovementComponent->IsFalling() || GCMovementComponent->IsProning())
-	&& !CharacterEquipmentComponent->IsChangingEquipment();
-}
-
-void AGCBaseCharacter::OnShot(UAnimMontage* AnimMontage)
-{
-	InterruptOtherActions();
-	PlayAnimMontage(AnimMontage);
+	return GCMovementComponent->IsMovingOnGround() || GCMovementComponent->IsFalling() || GCMovementComponent->IsProning();
 }
 
 void AGCBaseCharacter::OnChangingEquippedItemStarted(UAnimMontage* AnimMontage, float Duration)
 {
-	InterruptOtherActions();
 	PlayAnimMontageWithDuration(AnimMontage, Duration);
 }
 
-bool AGCBaseCharacter::CanAim() const
+void AGCBaseCharacter::OnAimStateChanged(bool bAiming, ARangeWeaponItem* Weapon)
 {
-	return !bAiming && GCMovementComponent->IsMovingOnGround();
-}
-
-void AGCBaseCharacter::OnWeaponPickedUpChanged(class ARangeWeaponItem* EquippedWeapon, bool bPickedUp)
-{
-	if (bPickedUp)
+	GCMovementComponent->SetIsAiming(bAiming);
+	if (bAiming && IsValid(Weapon))
 	{
-		EquippedWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, EquippedWeapon->GetCharacterUnequippedSocketName());
-		EquippedWeapon->ShootEvent.AddUObject(this, &AGCBaseCharacter::OnShot);
-		// oh oh
-		EquippedWeapon->AmmoChangedEvent.BindUObject(CharacterEquipmentComponent, &UCharacterEquipmentComponent::OnAmmoChanged);
-		EquippedWeapon->OutOfAmmoEvent.BindLambda([this](){ if (CharacterEquipmentComponent->IsAutoReload()) StartReloading(); });
+		OnAimingStart(Weapon->GetAimFOV(), Weapon->GetAimTurnModifier(), Weapon->GetAimLookUpModifier());
 	}
 	else
 	{
-		// FDelegateHandle instead of this?
-		EquippedWeapon->ShootEvent.RemoveAll(this);
-		EquippedWeapon->OutOfAmmoEvent.Unbind();
+		OnAimingEnd();
 	}
-}
-
-void AGCBaseCharacter::OnWeaponEquippedChanged(ARangeWeaponItem* EquippedWeapon, bool bEquipped)
-{
-	FName SocketName;
-	if (bEquipped)
-	{
-		GCMovementComponent->SetAimingSpeed(EquippedWeapon->GetAimMaxSpeed());
-		SocketName = EquippedWeapon->GetCharacterEquippedSocketName();
-		UpdateStrafingControls();
-	}
-	else
-	{
-		SocketName = EquippedWeapon->GetCharacterUnequippedSocketName();
-	}
-
-	EquippedWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, SocketName);
 }
 
 #pragma endregion WEAPONS
+
+#pragma region MELEE
+
+void AGCBaseCharacter::StartPrimaryMeleeAttack()
+{
+	CharacterEquipmentComponent->StartPrimaryMeleeAttack(Controller);
+}
+
+void AGCBaseCharacter::StopPrimaryMeleeAttack()
+{
+	CharacterEquipmentComponent->StopPrimaryMeleeAttack();
+}
+
+void AGCBaseCharacter::StartSecondaryMeleeAttack()
+{
+	CharacterEquipmentComponent->StartHeavyMeleeAttack(Controller);
+}
+
+void AGCBaseCharacter::StopSecondaryMeleeAttack()
+{
+	CharacterEquipmentComponent->StopHeavyMeleeAttack();
+}
+
+#pragma endregion MELEE
 
 #pragma region MOVEMENT
 
@@ -958,3 +889,111 @@ float AGCBaseCharacter::PlayAnimMontageWithDuration(UAnimMontage* Montage, float
 	return AnimInstance->Montage_Play(Montage, PlayRate);
 }
 
+void AGCBaseCharacter::ReactToDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType,
+	AController* InstigatedBy, AActor* DamageCauser)
+{
+	if (!CharacterAttributesComponent->IsAlive())
+	{
+		return;
+	}
+	
+	if (HitReactionMontages.Num() > 0)
+	{
+		UAnimMontage* HitReactionMontage = HitReactionMontages[FMath::RandRange(0, HitReactionMontages.Num() -1)];
+		PlayAnimMontage(HitReactionMontage);	
+	}
+}
+
+bool AGCBaseCharacter::CanStartAction(ECharacterAction Action)
+{
+	if (!CharacterAttributesComponent->IsAlive())
+	{
+		return false;
+	}
+	
+	const FCharacterActions* BlockedByActions = ActionBlockers.Find(Action);
+	if (!BlockedByActions || BlockedByActions->AffectedActions.Num() == 0)
+	{
+		return true;
+	}
+
+	return BlockedByActions->AffectedActions.Intersect(ActiveActions).Num() == 0;
+}
+
+void AGCBaseCharacter::OnActionStarted(ECharacterAction Action)
+{
+	ActiveActions.Add(Action);
+	const FCharacterActions* ActionsToInterrupt = ActionInterrupters.Find(Action);
+	if (!ActionsToInterrupt)
+	{
+		return;
+	}
+
+	TSet<ECharacterAction> AffectedActions = ActionsToInterrupt->AffectedActions.Intersect(ActiveActions);
+	for (ECharacterAction ActionToInterrupt : AffectedActions)
+	{
+		switch (ActionToInterrupt)
+		{
+			case ECharacterAction::Aim:
+				CharacterEquipmentComponent->StopAiming();
+				break;
+			case ECharacterAction::Sprint:
+				StopSprinting();
+				break;
+			case ECharacterAction::Climb:
+			case ECharacterAction::Zipline:
+				TryStopInteracting();
+				break;
+			case ECharacterAction::Wallrun:
+				GCMovementComponent->StopWallrunning(false);
+			break;
+			case ECharacterAction::Crawl:
+			case ECharacterAction::Crouch:
+				GCMovementComponent->UnCrouch();
+				break;
+			case ECharacterAction::Slide:
+				GCMovementComponent->StopSliding();
+			break;
+			case ECharacterAction::Reload:
+				CharacterEquipmentComponent->InterruptReloading();
+				break;
+			case ECharacterAction::Shoot:
+				CharacterEquipmentComponent->StopFiring();
+			break;
+			case ECharacterAction::ChangeEquipment:
+				CharacterEquipmentComponent->InterruptChangingEquipment();
+			break;
+			case ECharacterAction::ThrowItem:
+				CharacterEquipmentComponent->InterruptThrowingItem();
+			break;
+			case ECharacterAction::MeleeAttack:
+				// CharacterEquipmentComponent->StopMeleeAttack();
+			break;
+			case ECharacterAction::HardLand:
+			case ECharacterAction::Swim:
+			case ECharacterAction::Mantle:
+			case ECharacterAction::Jump:
+			default:
+				// these are uninterruptable
+				break;
+		}
+	}
+}
+
+void AGCBaseCharacter::OnActionEnded(ECharacterAction Action)
+{
+	ActiveActions.Remove(Action);
+}
+
+void AGCBaseCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+	// AAIController* AIController = Cast<AAIController>(NewController);
+	IGenericTeamAgentInterface* AIController = Cast<IGenericTeamAgentInterface>(NewController);
+	if (!AIController)
+	{
+		return;
+	}
+
+	AIController->SetGenericTeamId(FGenericTeamId((uint8)Team));
+}

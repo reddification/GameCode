@@ -4,7 +4,7 @@
 #include "Characters/Animations/Notifies/AnimNotify_ReloadShellInserted.h"
 
 #include "Characters/GCBaseCharacter.h"
-#include "Components/CharacterEquipmentComponent.h"
+#include "Components/Character/CharacterEquipmentComponent.h"
 
 void UAnimNotify_ReloadShellInserted::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
 {
