@@ -72,3 +72,9 @@ Plugins/*/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+/.idea/.idea.GameCode/.idea/indexLayout.xml
+/.idea/.idea.GameCode/.idea/.name
+/.idea/.idea.GameCode/.idea/encodings.xml
+/.idea/.idea.GameCode/.idea/vcs.xml
+/.idea/.idea.GameCode.dir/.idea/workspace.xml
+/.idea/.idea.GameCode/.idea/.gitignore
