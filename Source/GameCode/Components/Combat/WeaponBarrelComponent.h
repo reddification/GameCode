@@ -17,4 +17,6 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	FFireModeSettings FireModeSettings;
+
+	virtual AActor* GetDamagingActor() const override;
 };

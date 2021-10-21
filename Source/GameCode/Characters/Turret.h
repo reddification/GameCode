@@ -10,6 +10,7 @@
 UENUM(BlueprintType)
 enum class ETurretMode : uint8
 {
+	Idle,
 	Search,
 	Attack
 };
@@ -74,6 +75,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	ETeam Team = ETeam::BadGuys;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	ETurretMode CurrentMode = ETurretMode::Search;
+
 private:
 	void Search(float DeltaTime);
 	void Track(float DeltaTime);
@@ -82,8 +86,6 @@ private:
 
 	void Shoot();
 	
-	ETurretMode CurrentMode = ETurretMode::Search;
-
 	TWeakObjectPtr<AActor> Target = nullptr;
 	IKillable* KillableTarget = nullptr;
 	

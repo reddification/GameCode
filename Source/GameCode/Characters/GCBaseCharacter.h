@@ -68,7 +68,10 @@ public:
 	virtual void SwimForward(float Value){ CurrentInputForward = Value; }
 	virtual void SwimRight(float Value) { CurrentInputRight = Value; }
 	virtual void SwimUp(float Value) {  }
+
+	UFUNCTION(BlueprintCallable)
 	virtual void Mantle(bool bForce = false);
+
 	virtual void Jump() override;
 	
 	virtual void StartRequestingSprint();

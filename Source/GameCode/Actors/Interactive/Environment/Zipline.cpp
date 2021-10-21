@@ -22,6 +22,10 @@ AZipline::AZipline()
 	InteractionVolume->SetGenerateOverlapEvents(true);
 	UCapsuleComponent* InteractionCapsule = StaticCast<UCapsuleComponent*>(InteractionVolume);
 	InteractionCapsule->SetCapsuleRadius(InteractionCapsuleRadius);
+
+	FirstPoleStaticMeshComponent->bCastDynamicShadow = false;
+	SecondPoleStaticMeshComponent->bCastDynamicShadow = false;
+	CableStaticMeshComponent->bCastDynamicShadow = false;
 }
 
 

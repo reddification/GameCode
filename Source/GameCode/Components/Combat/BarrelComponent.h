@@ -63,6 +63,8 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	class USoundCue* ShotSound;
+
+	virtual AActor* GetDamagingActor() const { return GetOwner(); }
 	
 private:
 

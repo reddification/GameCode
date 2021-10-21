@@ -23,7 +23,6 @@ public:
 	void SetFalling(bool bNewState) { bFalling = bNewState; }
 	bool IsOutOfStamina() const { return bRegeneratingStamina; }
 	void SetMovementMode(const TEnumAsByte<EMovementMode>& NewMovementMode) { MovementMode = NewMovementMode; }
-	float GetReloadSpeed() const { return ReloadSpeed; }
 
 	mutable FOutOfHealthEvent OutOfHealthEvent;
 	mutable FOutOfStaminaEvent OutOfStaminaEvent;
@@ -68,10 +67,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Oxygen", meta=(UIMin = 0.f))
 	float DrowningHealthDamage = 5.f;
 
-	// montage duration divided by this factor
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(UIMin = 0.25f))
-	float ReloadSpeed = 1.0f;
-	
 #pragma region STAMINA
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
