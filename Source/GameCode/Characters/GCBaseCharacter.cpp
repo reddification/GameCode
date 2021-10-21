@@ -997,3 +997,8 @@ void AGCBaseCharacter::PossessedBy(AController* NewController)
 
 	AIController->SetGenericTeamId(FGenericTeamId((uint8)Team));
 }
+
+FGenericTeamId AGCBaseCharacter::GetGenericTeamId() const
+{
+	return FGenericTeamId((uint8)Team);
+}

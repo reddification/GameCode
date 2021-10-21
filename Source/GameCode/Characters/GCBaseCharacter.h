@@ -121,7 +121,7 @@ public:
 
 	virtual void PossessedBy(AController* NewController) override;
 
-	virtual FGenericTeamId GetGenericTeamId() const override { return FGenericTeamId((uint8)Team); }
+	virtual FGenericTeamId GetGenericTeamId() const override;
 
 	virtual bool IsAlive() const override { return CharacterAttributesComponent->IsAlive(); }
 	
