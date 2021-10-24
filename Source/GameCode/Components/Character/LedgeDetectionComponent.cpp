@@ -32,7 +32,7 @@ bool ULedgeDetectionComponent::DetectLedge(FLedgeDescriptor& LedgeDescriptor)
 #else
 	bool bDebugEnabled = false;
 #endif
-	
+
 	const GCTraceUtils::FTraceParams TraceParams(bDebugEnabled);
 
 	FCollisionQueryParams CollisionQueryParams;

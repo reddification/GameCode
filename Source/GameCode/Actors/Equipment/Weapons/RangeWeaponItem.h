@@ -82,7 +82,7 @@ protected:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	FName MuzzleSocketName = "muzzle_socket";
-	
+
 private:
 	FTimerHandle ShootTimer;
 	FTimerHandle ChangeFireModeTimer;

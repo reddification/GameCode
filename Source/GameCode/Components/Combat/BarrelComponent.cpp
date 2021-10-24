@@ -118,7 +118,7 @@ void UBarrelComponent::ApplyDamage(const FHitResult& ShotResult, const FVector& 
 		DamageEvent.HitInfo = ShotResult;
 		DamageEvent.ShotDirection = Direction;
 		DamageEvent.DamageTypeClass = DamageTypeClass;
-		HitActor->TakeDamage(Damage, DamageEvent, ShooterController, GetOwner());	
+		HitActor->TakeDamage(Damage, DamageEvent, ShooterController, GetDamagingActor());	
 	}
 }
 
