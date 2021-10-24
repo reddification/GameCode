@@ -1,7 +1,7 @@
-#include "Characters/GCAICharacter.h"
+#include "GCAICharacter.h"
 
 #include "NavigationInvokerComponent.h"
-#include "Components/AI/AIPatrolComponent.h"
+#include "AI/Components/AIPatrolComponent.h"
 
 AGCAICharacter::AGCAICharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)

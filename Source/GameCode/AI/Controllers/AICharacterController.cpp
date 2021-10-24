@@ -1,7 +1,8 @@
-#include "Characters/Controllers/AICharacterController.h"
+#include "AICharacterController.h"
+
+#include "AI/Characters/GCAICharacter.h"
+#include "AI/Components/AIPatrolComponent.h"
 #include "Perception/AISense_Sight.h"
-#include "Characters/GCAICharacter.h"
-#include "Components/AI/AIPatrolComponent.h"
 
 void AAICharacterController::BeginPlay()
 {
@@ -57,12 +58,12 @@ void AAICharacterController::OnMoveCompleted(FAIRequestID RequestID, const FPath
 void AAICharacterController::TryMoveToNextTarget()
 {
 	AActor* ActorToFollow = GetClosestSensedActor(UAISense_Sight::StaticClass());
-	if (IsValid(ActorToFollow) && !IsTargetReached(ActorToFollow->GetActorLocation(), ActorTargetReachRadius) && bCanFollowActor)
+	if (IsValid(ActorToFollow) && !IsTargetReached(ActorToFollow->GetActorLocation(), ActorTargetReachRadius))
 	{
-		LastFollowedActor = ActorToFollow;
+		// LastFollowedActor = ActorToFollow;
 		MoveToActor(ActorToFollow, ActorTargetReachRadius);
 		bPatrolling = false;
-		bCanFollowActor = false;
+		// bCanFollowActor = false;
 	}
 	else
 	{

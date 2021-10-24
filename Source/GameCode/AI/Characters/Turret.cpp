@@ -1,10 +1,9 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
-#include "Characters/Turret.h"
+#include "Turret.h"
 
 #include "GenericTeamAgentInterface.h"
+#include "Components/Combat/ExplosionComponent.h"
 #include "Components/Combat/TurretBarrelComponent.h"
+#include "Perception/AISense_Damage.h"
 
 ATurret::ATurret()
 {
@@ -21,6 +20,9 @@ ATurret::ATurret()
 
 	TurretBarrelComponent = CreateDefaultSubobject<UTurretBarrelComponent>(TEXT("WeaponBarrel"));
 	TurretBarrelComponent->SetupAttachment(TurretGunComponent);
+
+	ExplosionComponent = CreateDefaultSubobject<UExplosionComponent>(TEXT("Explosion"));
+	ExplosionComponent->SetupAttachment(RootComponent);
 }
 
 void ATurret::Tick(float DeltaTime)
@@ -42,6 +44,11 @@ void ATurret::Tick(float DeltaTime)
 
 void ATurret::SetCurrentTarget(AActor* NewTarget)
 {
+	if (Health <= 0)
+	{
+		return;
+	}
+	
 	Target = NewTarget;
 	KillableTarget = Cast<IKillable>(NewTarget);
 	SetMode(Target.IsValid() ? ETurretMode::Attack : ETurretMode::Search);
@@ -67,6 +74,13 @@ void ATurret::PossessedBy(AController* NewController)
 	}
 
 	AIController->SetGenericTeamId(FGenericTeamId((uint8)Team));
+}
+
+void ATurret::BeginPlay()
+{
+	Super::BeginPlay();
+	Health = MaxHealth;
+	OnTakeAnyDamage.AddDynamic(this, &ATurret::OnDamageTaken);
 }
 
 void ATurret::Search(float DeltaTime)
@@ -120,6 +134,27 @@ void ATurret::Shoot()
 	if (KillableTarget && !KillableTarget->IsAlive())
 	{
 		SetCurrentTarget(nullptr);
+	}
+}
+
+void ATurret::OnDamageTaken(AActor* DamagedActor, float Damage, const UDamageType* DamageType,
+	AController* InstigatedBy, AActor* DamageCauser)
+{
+	if (Health < 0)
+	{
+		return;
+	}
+	
+	Health = FMath::Clamp(Health - Damage, 0.f, MaxHealth);
+	UAISense_Damage::ReportDamageEvent(GetWorld(), this, DamageCauser, Damage, DamageCauser->GetActorLocation(), GetActorLocation());
+	if (Health <= 0)
+	{
+		SetActorTickEnabled(false);
+		GetWorld()->GetTimerManager().ClearTimer(ShootDelayTimer);
+		OnExploded();
+		ExplosionComponent->Explode(Controller);
+		OnTakeAnyDamage.RemoveDynamic(this, &ATurret::OnDamageTaken);
+		if (DeathEvent.IsBound()) DeathEvent.Broadcast();
 	}
 }
 

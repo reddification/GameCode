@@ -7,6 +7,8 @@
 #include "UObject/WeakInterfacePtr.h"
 #include "Turret.generated.h"
 
+DECLARE_MULTICAST_DELEGATE(FDeathEvent)
+
 UENUM(BlueprintType)
 enum class ETurretMode : uint8
 {
@@ -22,7 +24,7 @@ class GAMECODE_API ATurret : public APawn
 
 public:
 	ATurret();
-
+	
 	virtual void Tick(float DeltaTime) override;
 
 	void SetCurrentTarget(AActor* NewTarget);
@@ -33,6 +35,8 @@ public:
 	virtual void PossessedBy(AController* NewController) override;
 	ETeam GetTeam() const { return Team; }
 
+	mutable FDeathEvent DeathEvent;
+	
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	USceneComponent* TurretBaseComponent;
@@ -43,6 +47,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	class UTurretBarrelComponent* TurretBarrelComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	class UExplosionComponent* ExplosionComponent;
+	
 	// per sec
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin=0.f, UIMin=0.f))
 	float BaseSearchRotationRate = 60.f;
@@ -75,6 +82,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	ETeam Team = ETeam::BadGuys;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin=0.f, UIMin=0.f))
+	float MaxHealth = 250.f;
+	
+	virtual void BeginPlay() override;
+
+	UFUNCTION(BlueprintImplementableEvent)
+	void OnExploded();
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	ETurretMode CurrentMode = ETurretMode::Search;
 
@@ -90,4 +105,12 @@ private:
 	IKillable* KillableTarget = nullptr;
 	
 	FTimerHandle ShootDelayTimer;
+	
+	UFUNCTION()
+	void OnDamageTaken(AActor* DamagedActor, float Damage, const UDamageType* DamageType,
+		AController* InstigatedBy, AActor* DamageCauser);
+
+	float Health = 0.f;
+	bool bEnabled = true;
+
 };

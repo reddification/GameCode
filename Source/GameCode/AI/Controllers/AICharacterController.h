@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Characters/Controllers/GCAIController.h"
+#include "GCAIController.h"
 #include "AICharacterController.generated.h"
 
 UCLASS()
@@ -15,7 +15,7 @@ public:
 	virtual void ActorsPerceptionUpdated(const TArray<AActor*>& UpdatedActors) override;
 
 	virtual void OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result) override;
-
+	
 protected:
 	virtual void BeginPlay() override;
 

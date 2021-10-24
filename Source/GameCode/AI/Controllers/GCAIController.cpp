@@ -1,4 +1,4 @@
-#include "Characters/Controllers/GCAIController.h"
+#include "GCAIController.h"
 
 #include "Characters/GCBaseCharacter.h"
 #include "Perception/AIPerceptionComponent.h"

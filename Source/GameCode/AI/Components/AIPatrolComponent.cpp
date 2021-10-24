@@ -1,5 +1,4 @@
-#include "Components/AI/AIPatrolComponent.h"
-
+#include "AIPatrolComponent.h"
 #include "Actors/Navigation/PatrolPath.h"
 
 FVector UAIPatrolComponent::SelectClosestWaypoint()
